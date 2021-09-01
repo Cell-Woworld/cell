@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="StaticDebug|Win32">
+      <Configuration>StaticDebug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="StaticDebug|x64">
+      <Configuration>StaticDebug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{BDB5CCC8-688A-4929-A602-390B83D7E2F2}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>Websocket</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)..\bin\$(PlatformTarget)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)Temp\$(PlatformTarget)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)..\lib\$(PlatformTarget)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)Temp\$(PlatformTarget)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)..\bin\$(PlatformTarget)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)Temp\$(PlatformTarget)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)..\lib\$(PlatformTarget)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)Temp\$(PlatformTarget)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)..\bin\$(PlatformTarget)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)Temp\$(PlatformTarget)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)..\bin\$(PlatformTarget)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)Temp\$(PlatformTarget)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>API_PROVIDER;_WINDOWS;_USRDLL;WIN32;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(SolutionDir)../inc/;$(PROTOBUF)/src;$(SolutionDir)../$(ProjectName)/inc/uWebSockets/src/;$(SolutionDir)../$(ProjectName)/inc/uSockets/;$(SolutionDir)../$(ProjectName)/inc/zlib/</AdditionalIncludeDirectories>
+      <DisableSpecificWarnings>4307</DisableSpecificWarnings>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/D _CRT_SECURE_NO_WARNINGS /D _SILENCE_CXX20_IS_POD_DEPRECATION_WARNING %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/DYNAMICBASE "RNA.lib" "uSockets.lib"  "libprotobufd.lib" "zlibstaticd.lib" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalLibraryDirectories>$(OutDir);$(PROTOBUF)/bin/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget)/$(Configuration)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>STATIC_API;_WINDOWS;_USRDLL;WIN32;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(SolutionDir)../inc/;$(PROTOBUF)/src;$(SolutionDir)../$(ProjectName)/inc/uWebSockets/src/;$(SolutionDir)../$(ProjectName)/inc/uSockets/;$(SolutionDir)../$(ProjectName)/inc/zlib/</AdditionalIncludeDirectories>
+      <DisableSpecificWarnings>4307</DisableSpecificWarnings>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/D _CRT_SECURE_NO_WARNINGS /D _SILENCE_CXX20_IS_POD_DEPRECATION_WARNING %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/DYNAMICBASE "RNA.lib" "uSockets.lib"  "libprotobufd.lib" "zlibstaticd.lib" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalLibraryDirectories>$(OutDir);$(PROTOBUF)/bin/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+    <Lib>
+      <AdditionalDependencies>uSockets.lib zlibstaticd.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget)</AdditionalLibraryDirectories>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>API_PROVIDER;_WINDOWS;_USRDLL;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(SolutionDir)../inc/;$(PROTOBUF)/src;$(SolutionDir)../$(ProjectName)/inc/uWebSockets/src/;$(SolutionDir)../$(ProjectName)/inc/uSockets/;$(SolutionDir)../$(ProjectName)/inc/zlib/</AdditionalIncludeDirectories>
+      <DisableSpecificWarnings>4307</DisableSpecificWarnings>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/D _CRT_SECURE_NO_WARNINGS /D _SILENCE_CXX20_IS_POD_DEPRECATION_WARNING %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/DYNAMICBASE "RNA.lib" "uSockets.lib"  "libprotobufd.lib" "zlibstaticd.lib" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalLibraryDirectories>$(OutDir);$(PROTOBUF)/bin/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget)/$(Configuration)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>STATIC_API;_WINDOWS;_USRDLL;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(SolutionDir)../inc/;$(PROTOBUF)/src;$(SolutionDir)../$(ProjectName)/inc/uWebSockets/src/;$(SolutionDir)../$(ProjectName)/inc/uSockets/;$(SolutionDir)../$(ProjectName)/inc/zlib/</AdditionalIncludeDirectories>
+      <DisableSpecificWarnings>4307</DisableSpecificWarnings>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/D _CRT_SECURE_NO_WARNINGS /D _SILENCE_CXX20_IS_POD_DEPRECATION_WARNING %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/DYNAMICBASE "RNA.lib" "uSockets.lib"  "libprotobufd.lib" "zlibstaticd.lib" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalLibraryDirectories>$(OutDir);$(PROTOBUF)/bin/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+    <Lib>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget)</AdditionalLibraryDirectories>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>API_PROVIDER;_WINDOWS;_USRDLL;WIN32;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(SolutionDir)../inc/;$(PROTOBUF)/src;$(SolutionDir)../$(ProjectName)/inc/uWebSockets/src/;$(SolutionDir)../$(ProjectName)/inc/uSockets/;$(SolutionDir)../$(ProjectName)/inc/zlib/</AdditionalIncludeDirectories>
+      <DisableSpecificWarnings>4307</DisableSpecificWarnings>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/D _CRT_SECURE_NO_WARNINGS /D _SILENCE_CXX20_IS_POD_DEPRECATION_WARNING %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/DYNAMICBASE "RNA.lib" "uSockets.lib" "libprotobuf.lib" "zlibstatic.lib" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalLibraryDirectories>$(OutDir);$(PROTOBUF)/bin/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget)/$(Configuration)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>API_PROVIDER;_WINDOWS;_USRDLL;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(SolutionDir)../inc/;$(PROTOBUF)/src;$(SolutionDir)../$(ProjectName)/inc/uWebSockets/src/;$(SolutionDir)../$(ProjectName)/inc/uSockets/;$(SolutionDir)../$(ProjectName)/inc/zlib/</AdditionalIncludeDirectories>
+      <DisableSpecificWarnings>4307</DisableSpecificWarnings>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalOptions>/D _CRT_SECURE_NO_WARNINGS /D _SILENCE_CXX20_IS_POD_DEPRECATION_WARNING %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/DYNAMICBASE "RNA.lib" "uSockets.lib" "libprotobuf.lib" "zlibstatic.lib" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalLibraryDirectories>$(OutDir);$(PROTOBUF)/bin/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget);$(SolutionDir)../$(ProjectName)/lib/$(PlatformTarget)/$(Configuration)</AdditionalLibraryDirectories>
+    </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="../../Websocket/src/Websocket.h" />
+    <ClInclude Include="../../Websocket/src/win/framework.h" />
+    <ClInclude Include="../../Websocket/src/win/pch.h" />
+    <ClInclude Include="../../Websocket/proto/Websocket.pb.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\App.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\AsyncSocket.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\AsyncSocketData.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\BloomFilter.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\HttpContext.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\HttpContextData.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\HttpParser.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\HttpResponse.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\HttpResponseData.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\HttpRouter.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\Loop.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\LoopData.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\PerMessageDeflate.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\ProxyParser.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\TopicTree.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\Utilities.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\WebSocket.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\WebSocketContext.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\WebSocketContextData.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\WebSocketData.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\WebSocketExtensions.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\WebSocketHandshake.h" />
+    <ClInclude Include="..\..\Websocket\inc\uWebSockets\src\WebSocketProtocol.h" />
+    <ClInclude Include="..\..\Websocket\proto\Cell.pb.h" />
+    <ClInclude Include="..\..\Websocket\proto\Web.pb.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="../../Websocket/src/Websocket.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="../../Websocket/src/win/dllmain.cpp" />
+    <ClCompile Include="../../Websocket/src/win/pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="../../Websocket/proto/Websocket.pb.cc" />
+    <ClCompile Include="..\..\Websocket\proto\Cell.pb.cc" />
+    <ClCompile Include="..\..\Websocket\proto\Web.pb.cc" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="../../Websocket/proto/Websocket.proto">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+    </CustomBuild>
+    <None Include="../../Websocket/scxml/Websocket.scxml" />
+    <CustomBuild Include="..\..\proto\Cell.proto">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+    </CustomBuild>
+    <CustomBuild Include="..\..\proto\Web.proto">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(PROTOBUF)\bin\protoc.exe" --proto_path=%(RelativeDir) --cpp_out="$(ProjectDir)../../$(ProjectName)/proto" %(RelativeDir)%(Filename)%(Extension)</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename)%(Extension) Performing Custom Build Tools</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='StaticDebug|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.h;$(ProjectDir)../../$(ProjectName)/proto/%(Filename).pb.cc</Outputs>
+    </CustomBuild>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

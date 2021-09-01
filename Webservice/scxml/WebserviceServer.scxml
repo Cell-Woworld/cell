@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" binding="early" xmlns:qt="http://www.qt.io/2015/02/scxml-ext" name="Timer" qt:editorversion="4.12.4">
+    <state id="Init">
+        <qt:editorinfo geometry="167.76;148.55;-60;-50;120;100" scenegeometry="167.76;148.55;107.76;98.55;120;100"/>
+        <onentry>
+            <script>Bio.Cell.NewRNA({&quot;name&quot;:&quot;Webservice&quot;})</script>
+        </onentry>
+        <transition type="external" target="Run" cond="::return.Bio.Cell.NewRNA">
+            <qt:editorinfo endTargetFactors="3.87;22.18"/>
+        </transition>
+        <transition type="external" target="Final_1"/>
+    </state>
+    <state id="Run">
+        <qt:editorinfo geometry="601.69;149.02;-250.77;-111.51;347.07;507.85" scenegeometry="601.69;149.02;350.92;37.51;347.07;507.85"/>
+        <transition type="external" event="Bio.Cell.Destroyed" target="Final_1">
+            <qt:editorinfo startTargetFactors="4.66;83.24"/>
+        </transition>
+        <state id="InitWebservice">
+            <qt:editorinfo geometry="3.65;11.10;-190;-50;237.26;116" scenegeometry="605.34;160.12;415.34;110.12;237.26;116"/>
+            <onentry>
+                <assign location="Webservice.Start.port" expr="8098"/>
+            </onentry>
+            <transition type="internal" event="Webservice.Start" target="WaitConnect"/>
+        </state>
+        <state id="WaitConnect">
+            <qt:editorinfo geometry="9.20;303.55;-217;-51.07;284.10;117.07" scenegeometry="610.89;452.57;393.89;401.50;284.10;117.07"/>
+            <onentry>
+                <script>Webservice.Start</script>
+            </onentry>
+        </state>
+    </state>
+    <final id="Final_1">
+        <qt:editorinfo geometry="167.76;463.07;-20;-20;40;40" scenegeometry="167.76;463.07;147.76;443.07;40;40"/>
+    </final>
+</scxml>

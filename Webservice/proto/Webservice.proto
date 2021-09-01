@@ -1,0 +1,15 @@
+syntax = "proto3";
+package Webservice;
+
+message Start
+{
+	message ServiceInfo
+	{
+		string serviceName = 1;
+		repeated string interestedColumnList = 2;
+		string response = 3;
+	}
+	string host = 1;
+	string port = 2;
+	repeated ServiceInfo serviceList = 3;
+}

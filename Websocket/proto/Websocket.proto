@@ -1,0 +1,27 @@
+syntax = "proto3";
+package Websocket;
+
+message Start
+{
+	int32 port = 1;
+	string cert_filename = 2;
+	string key_filename = 3;
+}
+
+message NewConnection
+{
+	uint64 id = 1;
+}
+
+message Service
+{
+	message Config
+	{
+		uint64 id = 1;
+	}
+
+	message ConnectionClosed
+	{
+	}
+}
+

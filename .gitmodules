@@ -1,0 +1,15 @@
+[submodule "mtDNA/src/ThreadPool"]
+	path = mtDNA/src/ThreadPool
+	url = https://github.com/Fdhvdu/ThreadPool
+[submodule "mtDNA/src/lib"]
+	path = mtDNA/src/lib
+	url = https://github.com/Fdhvdu/lib
+[submodule "Websocket/inc/uWebSockets"]
+	path = Websocket/inc/uWebSockets
+	url = https://github.com/uNetworking/uWebSockets
+[submodule "Websocket/inc/zlib"]
+	path = Websocket/inc/zlib
+	url = https://github.com/madler/zlib
+[submodule "Webservice/inc/cpp-httplib"]
+	path = Webservice/inc/cpp-httplib
+	url = https://github.com/yhirose/cpp-httplib
