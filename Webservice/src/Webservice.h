@@ -31,8 +31,11 @@ namespace Webservice
 		void GetQueryMap(const String& content, Map<String, String>& query_map);
 
 	private:
-		Map<String, ResponseInfo> interested_column_map_;
 		static Mutex send_event_mutex_;
+
+	private:
+		Map<String, ResponseInfo> interested_column_map_;
+		Cond_Var wait_response_;
 	};
 
 }

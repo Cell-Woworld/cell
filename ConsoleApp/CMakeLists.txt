@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.5)
 project(ConsoleApp VERSION 1.0.0)
 
 #########################################
@@ -24,6 +24,7 @@ if(WIN32)
 	-D VERSION_BUILD=${MODULE_VERSION_BUILD} -D VERSION_REVISION=\\\"${GIT_BRANCH}_${GIT_HASH}\\\" ")
 	set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -MD")
 	set(CMAKE_CXX_FLAGS_DEBUG "-DDEBUG -D_DEBUG -MDd")
+	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:10000000")
 	include_directories(../inc/)
 	file(GLOB_RECURSE ${PROJECT_NAME}_SRC "src/*.c" "src/*.cpp" "proto/*.cc")
 	add_executable(${PROJECT_NAME} ${${PROJECT_NAME}_SRC})

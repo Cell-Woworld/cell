@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.5)
 project(StateMachine VERSION 1.0.0)
 
 #########################################
@@ -48,7 +48,7 @@ elseif(APPLE)
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND cp -f ${CMAKE_BUILD_TYPE}-${SDK_NAME}/lib${PROJECT_NAME}.a ../../../lib/)
 	endif()
 elseif(UNIX)
-	set(CMAKE_CXX_FLAGS "-std=c++14 -fopenmp -g -fPIC \
+	set(CMAKE_CXX_FLAGS "-std=c++17 -fopenmp -g -fPIC \
 	-D VERSION_MAJOR=${MODULE_VERSION_MAJOR} -D VERSION_MINOR=${MODULE_VERSION_MINOR} \
 	-D VERSION_BUILD=${MODULE_VERSION_BUILD} -D VERSION_REVISION=\\\"${GIT_BRANCH}_${GIT_HASH}\\\" ")
 	set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -O3")

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.5)
 project(mtDNA VERSION 1.0.0)
 
 #########################################
@@ -17,6 +17,10 @@ string(REGEX REPLACE "^([0-9]+)\\.[0-9]+\\.[0-9]+" "\\1" MODULE_VERSION_MAJOR "$
 string(REGEX REPLACE "^[0-9]+\\.([0-9])+\\.[0-9]+" "\\1" MODULE_VERSION_MINOR "${MODULE_VERSION}")
 string(REGEX REPLACE "^[0-9]+\\.[0-9]+\\.([0-9]+)" "\\1" MODULE_VERSION_BUILD "${MODULE_VERSION}")
 message(STATUS "${PROJECT_NAME} version: ${MODULE_VERSION}.${GIT_BRANCH}_${GIT_HASH}")
+
+if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/lib/src/CSpin_mutex.cpp" OR NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/lib/src/Scope_guard.cpp")
+	message(FATAL_ERROR "\"CSpin_mutex.cpp\" and \"Scope_guard.cpp\" are required in \"${CMAKE_CURRENT_SOURCE_DIR}/src/lib/src/\"")
+endif()
 
 if(WIN32)
 	set(CMAKE_CXX_FLAGS "-std:c++17 -EHsc \
@@ -37,7 +41,7 @@ if(WIN32)
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D STATIC_API")
 		add_library(${PROJECT_NAME} STATIC ${${PROJECT_NAME}_SRC})
 		SET_TARGET_PROPERTIES(${PROJECT_NAME} PROPERTIES PREFIX "")
-		add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND xcopy /y $<CONFIG>\\${PROJECT_NAME}.lib ..\\..\\lib\\)
+		add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND xcopy /y ${PROJECT_NAME}.lib ..\\..\\lib\\)
 	endif()
 elseif(APPLE)
 	set(CMAKE_CXX_FLAGS "-std=c++17 -g \

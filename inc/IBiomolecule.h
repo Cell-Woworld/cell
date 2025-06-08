@@ -7,7 +7,7 @@ class IModel;
 class IBiomolecule
 {
 public:
-	IBiomolecule(IBiomolecule* owner) : owner_(owner), name_(""), full_name_("") { 
+	IBiomolecule(IBiomolecule* owner) : owner_(owner), name_(""), full_name_("") {
 	};
 	virtual ~IBiomolecule() {
 		owner_ = nullptr;
@@ -21,12 +21,13 @@ public:
 	IBiomolecule* owner() const { return owner_; };
 
 public:
-	virtual void init(const char* name) {
+	virtual bool init(const char* name) {
 		name_ = name;
 		if (owner() != nullptr)
 			full_name_ = owner()->full_name() + "." + name_;
 		else
 			full_name_ = name_;
+		return true;
 	};
 	virtual const Obj<IModel> model() = 0;
 	virtual void add_event(const DynaArray& msg_name, const DynaArray& payload, IBiomolecule* src) = 0;
@@ -34,10 +35,12 @@ public:
 	virtual void on_event(const DynaArray& name_space, const DynaArray& msg_name, const DynaArray& payload) = 0;
 	virtual void do_event(const DynaArray& msg_name) = 0;
 	virtual void activate() {};
-	virtual void bind(IBiomolecule* src, void*) {};
+	virtual void bind(IBiomolecule* src, const char* filename) {};
 	virtual void unbind(IBiomolecule* src) {};
 	virtual const char* get_root_path() = 0;
 	virtual const char* get_version() = 0;
+	virtual void* FindMessageTypeByName(const char* name) { return nullptr; };
+	virtual void* FindValueByName(const char* msg_name, int index, const char* name) { return nullptr; };
 
 private:
 	IBiomolecule* owner_;

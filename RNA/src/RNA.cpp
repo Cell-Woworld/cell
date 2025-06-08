@@ -41,6 +41,11 @@ void RNA::SendEvent(const String& name, const String& payload)
 	impl_->SendEvent(name, payload);
 }
 
+void RNA::RaiseEvent(const String& name, const String& payload, IBiomolecule* src)
+{
+	impl_->RaiseEvent(name, payload, src);
+}
+
 String RNA::GetRootPath()
 {
 	return ((RNAImpl*)impl_)->get_root_path();

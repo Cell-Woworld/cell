@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" binding="early" xmlns:qt="http://www.qt.io/2015/02/scxml-ext" name="Timer" qt:editorversion="7.0.0">
+    <state id="Init">
+        <qt:editorinfo geometry="167.76;148.55;-60;-50;120;100" scenegeometry="167.76;148.55;107.76;98.55;120;100"/>
+        <onentry>
+            <script>Bio.Cell.NewRNA({&quot;name&quot;:&quot;TCPsocket&quot;})</script>
+        </onentry>
+        <transition type="external" target="Client" cond="::return.Bio.Cell.NewRNA"/>
+        <transition type="external" target="Final_1"/>
+    </state>
+    <state id="Client">
+        <qt:editorinfo geometry="601.69;149.02;-250.77;-116.14;347.07;512.48" scenegeometry="601.69;149.02;350.92;32.88;347.07;512.48"/>
+        <transition type="external" event="Bio.Cell.Destroyed" target="Final_1"/>
+        <state id="Client.InitTCPsocket">
+            <qt:editorinfo geometry="-5.87;13.27;-171.37;-42;200;100" scenegeometry="595.82;162.29;424.45;120.29;200;100"/>
+            <onentry>
+                <assign location="TCPsocket.Connect.address" expr="localhost"/>
+                <assign location="TCPsocket.Connect.port" expr="8099"/>
+            </onentry>
+            <transition type="internal" event="TCPsocket.Connect" target="Client.WaitConnect"/>
+        </state>
+        <state id="Client.WaitConnect">
+            <qt:editorinfo geometry="4.71;154.25;-231;-51.07;298.10;117.07" scenegeometry="606.40;303.27;375.40;252.20;298.10;117.07"/>
+            <onentry>
+                <script>TCPsocket.Connect</script>
+            </onentry>
+            <transition type="external" event="TCPsocket.Connect.Result" target="Client.Running">
+                <log label="TCPsocket.Client" expr="Connected"/>
+            </transition>
+            <transition type="internal" event="TCPsocket.Connect.Error">
+                <log label="TCPsocket.Client" expr="Error: code=::TCPsocket.Connect.Error.code, message=::TCPsocket.Connect.Error.message"/>
+            </transition>
+        </state>
+        <state id="Client.Running">
+            <qt:editorinfo geometry="-30.99;291.44;-170;-50;247.50;100" scenegeometry="570.70;440.46;400.70;390.46;247.50;100"/>
+            <onentry>
+                <script>TCPsocket.StartReceive</script>
+            </onentry>
+            <transition type="internal" event="TCPsocket.RawEvent">
+                <script>TCPsocket.RawEvent</script>
+            </transition>
+        </state>
+    </state>
+    <final id="Final_1">
+        <qt:editorinfo geometry="167.76;463.07;-20;-20;40;40" scenegeometry="167.76;463.07;147.76;443.07;40;40"/>
+    </final>
+</scxml>

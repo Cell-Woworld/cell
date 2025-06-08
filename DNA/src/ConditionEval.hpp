@@ -1,8 +1,11 @@
 #pragma once
 #include "internal/DNA.h"
+#include "exprtk.hpp"
+
 
 class ConditionEval
 {
+	static const char TAG[];
 	static const char EQUAL_UTF8[];
 	static const char NOT_EQUAL_UTF8[];
 	static const char GREATER_UTF8[];
@@ -13,6 +16,7 @@ class ConditionEval
 	static const char MINUS_UTF8[];
 	static const char PRODUCT_UTF8[];
 	static const char DIVID_UTF8[];
+	static const int DEFAULT_PRECISION = 16;
 
 public:
 	ConditionEval(BioSys::DNA* owner)
@@ -53,7 +57,9 @@ private:
 	T_TokenType _getToken(const String& strSentence, String& strToken, int& nParamPos);
 	T_TokenType _getCalcToken(const String& strSentence, String& strToken, int& nParamPos);
 	template<typename T> bool Compare(const T& srcSource, T_Operator enumOperator, const T& srcTarget);
-	bool Calculate(const String& szParam, double& dResult);
+	template<typename T> bool Calculate(const String& expression_string, T& result);
+	template<typename T> std::string to_string_with_precision(const T a_value, const int n = 6);
+	//bool Calculate(const String& szParam, double& dResult);
 	bool Brackets(const String& strSentence, int& nPos, T_TokenType& enumTokenType, String& strToken, double& dResult);
 	bool MulDiv(const String& strSentence, int& nPos, T_TokenType& enumTokenType, String& strToken, double& dResult);
 	bool PlusMinus(const String& strSentence, int& nPos, T_TokenType& enumTokenType, String& strToken, double& dResult);
@@ -61,11 +67,14 @@ private:
 	void RetrieveData(const String& src, String& target, const String& default_value = "");
 	bool IsNumberType(const String& strToken);
 	void CompareSourceTarget(const String& strSource, T_Operator enumOperator, const String& strTarget, bool& bRet);
+	void ReplaceUTF8Operator(String& sentence);
+	int getFullSentence(const String& sentence, int startPos, bool treat_as_string, T_TokenType& enumType, T_TokenType defaultType);
 
 private:
 	BioSys::DNA* owner_;
 };
 
+const char ConditionEval::TAG[] = "ConditionEval";
 const char ConditionEval::EQUAL_UTF8[] = { (char)0xef,(char)0xbc,(char)0x9d, (char)0x0 };
 const char ConditionEval::GREATER_UTF8[] = { (char)0xef,(char)0xbc,(char)0x9e, (char)0x0 };
 const char ConditionEval::LESS_UTF8[] = { (char)0xef,(char)0xbc,(char)0x9c, (char)0x0 };
@@ -76,6 +85,15 @@ const char ConditionEval::GREATER_EQUAL_UTF8[] = { (char)0xe2,(char)0x89,(char)0
 const char ConditionEval::LESS_EQUAL_UTF8[] = { (char)0xe2,(char)0x89,(char)0xa6, (char)0x0 };
 const char ConditionEval::PRODUCT_UTF8[] = { (char)0xc3,(char)0x97, (char)0x0 };
 const char ConditionEval::DIVID_UTF8[] = { (char)0xc3,(char)0xb7, (char)0x0 };
+
+template <typename T>
+std::string ConditionEval::to_string_with_precision(const T a_value, const int n)
+{
+	std::ostringstream out;
+	out.precision(n);
+	out << std::fixed << a_value;
+	return std::move(out).str();
+}
 
 ConditionEval::T_TokenType ConditionEval::_getToken(const String& cstrSentence, String& strToken, int& nParamPos)
 {
@@ -110,14 +128,20 @@ ConditionEval::T_TokenType ConditionEval::_getToken(const String& cstrSentence, 
 		if ((nPos >= 2) && (nCounter == 0))
 		{
 			enumType = SENTENCE;
-			strToken = strSentence.substr(0, nPos);
+			nPos = getFullSentence(strSentence, nPos, _treat_as_string, enumType, SENTENCE);
+			size_t _last_pos = strSentence.find_last_not_of(' ', nPos-1);
+			if (strSentence[0] == '(' && strSentence[_last_pos] == ')')
+				strToken = strSentence.substr(0, _last_pos+1);
+			else
+				strToken = "(" + strSentence.substr(0, _last_pos+1) + ")";
 		}
 		else
 		{
-			LOG_E("DNA",  "!!!!!!!!!!  Invalid operator in _getToken(%s)  !!!!!!!!!!", strSentence.c_str());
+			LOG_E("DNA::ConditionEval",  "!!!!!!!!!!  Invalid operator in _getToken(%s)  !!!!!!!!!!", strSentence.c_str());
 			assert(false);
 		}
-		nParamPos += (int)strToken.size();
+		//nParamPos += (int)strToken.size();
+		nParamPos += nPos;
 		break;
 	}
 	case '&':
@@ -176,9 +200,13 @@ ConditionEval::T_TokenType ConditionEval::_getToken(const String& cstrSentence, 
 			|| (strSentence[1] == LESS_EQUAL_UTF8[1] && strSentence[2] == LESS_EQUAL_UTF8[2]))
 		{
 			enumType = OPERATOR;
-			strToken = strSentence.substr(0, 3);
-			nParamPos += (int)strToken.size();
 		}
+		else
+		{
+			enumType = SOURCE_VAR;
+		}
+		strToken = strSentence.substr(0, 3);
+		nParamPos += (int)strToken.size();
 		break;
 	case (char)0xef:
 		if ((strSentence[1] == EQUAL_UTF8[1] && strSentence[2] == EQUAL_UTF8[2])
@@ -188,61 +216,19 @@ ConditionEval::T_TokenType ConditionEval::_getToken(const String& cstrSentence, 
 			|| (strSentence[1] == MINUS_UTF8[1] && strSentence[2] == MINUS_UTF8[2]))
 		{
 			enumType = OPERATOR;
-			strToken = strSentence.substr(0, 3);
-			nParamPos += (int)strToken.size();
 		}
+		else
+		{
+			enumType = SOURCE_VAR;
+		}
+		strToken = strSentence.substr(0, 3);
+		nParamPos += (int)strToken.size();
 		break;
 	case '"':
 		_treat_as_string = true;
 	default:
 	{
-		int nPos = 1;
-		bool bContinue = true;
-		char _prev_char = '\0';
-		while ((bContinue) && (nPos < strSentence.size()))
-		{
-			switch (strSentence[nPos])
-			{
-			case '&':
-			case '|':
-				if ((_treat_as_string == false || _prev_char == '"') && nPos < strSentence.size() - 1 && strSentence[nPos + 1] == strSentence[nPos])
-					bContinue = false;
-				else
-				{
-					_prev_char = strSentence[nPos];
-					nPos++;
-				}
-				break;
-			case '=':
-			case '!':
-			case '>':
-			case '<':
-			case (char)0xe2:
-				if (_treat_as_string == false || _prev_char == '"')
-				{
-					enumType = SOURCE_VAR;
-					bContinue = false;
-				}
-				else
-				{
-					_prev_char = strSentence[nPos];
-					nPos++;
-				}
-				break;
-			case '(':
-			case ')':
-				//LOG_E("DNA",  "!!!!!!!!!!  Invalid operator in _getToken(%s)  !!!!!!!!!!", strSentence.c_str());
-				//assert(false);
-				//break;
-			case ' ':
-				nPos++;
-				break;
-			default:
-				_prev_char = strSentence[nPos];
-				nPos++;
-				break;
-			}
-		}
+		int nPos = getFullSentence(strSentence, 1, _treat_as_string, enumType, SOURCE_VAR);
 		strToken = strSentence.substr(0, nPos);
 		nParamPos += (int)strToken.size();
 		strToken.erase(strToken.find_last_not_of(' ') + 1);
@@ -270,7 +256,7 @@ ConditionEval::T_TokenType ConditionEval::_getToken(const String& cstrSentence, 
 					enumType = STRING;
 				else
 				{
-					LOG_E("DNA",  "!!!!!!!!!!  Invalid operator in _getToken(%s)  !!!!!!!!!!", strSentence.c_str());
+					LOG_E("DNA::ConditionEval",  "!!!!!!!!!! in _getToken(%s)  !!!!!!!!!!", strSentence.c_str());
 					assert(false);
 				}
 			}
@@ -313,7 +299,7 @@ ConditionEval::T_TokenType ConditionEval::_getCalcToken(const String& cstrSenten
 		}
 		else
 		{
-			LOG_E("DNA",  "!!!!!!!!!!  Invalid operator in _getCalcToken(%s)  !!!!!!!!!!", strSentence.c_str());
+			LOG_E("DNA::ConditionEval",  "!!!!!!!!!!  Invalid operator in _getCalcToken(%s)  !!!!!!!!!!", strSentence.c_str());
 			assert(false);
 		}
 		nParamPos += (int)strToken.size();
@@ -353,7 +339,7 @@ ConditionEval::T_TokenType ConditionEval::_getCalcToken(const String& cstrSenten
 				break;
 			case '(':
 			case ')':
-				//LOG_E("DNA",  "!!!!!!!!!!  Invalid operator in _getCalcToken(%s)  !!!!!!!!!!", strSentence.c_str());
+				//LOG_E("DNA::ConditionEval",  "!!!!!!!!!!  Invalid operator in _getCalcToken(%s)  !!!!!!!!!!", strSentence.c_str());
 				//assert(false);
 				//break;
 			default:
@@ -379,7 +365,7 @@ ConditionEval::T_TokenType ConditionEval::_getCalcToken(const String& cstrSenten
 					enumType = STRING;
 				else
 				{
-					LOG_E("DNA",  "!!!!!!!!!!  Invalid operator in _getCalcToken(%s)  !!!!!!!!!!", strSentence.c_str());
+					LOG_E("DNA::ConditionEval",  "!!!!!!!!!!  Invalid operator in _getCalcToken(%s)  !!!!!!!!!!", strSentence.c_str());
 					assert(false);
 				}
 			}
@@ -390,6 +376,48 @@ ConditionEval::T_TokenType ConditionEval::_getCalcToken(const String& cstrSenten
 	return enumType;
 }
 
+template <typename T>
+bool ConditionEval::Calculate(const String& expression_string, T& result)
+{
+	exprtk::symbol_table<T> symbol_table;
+	symbol_table.add_constants();
+	exprtk::expression<T> expression;
+	expression.register_symbol_table(symbol_table);
+
+	exprtk::parser<T> parser;
+	try {
+
+		if (!parser.compile(expression_string, expression))
+		{
+			LOG_T(TAG, "Calculate() - %s   Expression: %s",
+				parser.error().c_str(),
+				expression_string.c_str());
+
+			return false;
+		}
+	}
+	catch (const std::exception&) {
+		LOG_E(TAG, "Calculate() - %s   Expression: %s",
+			parser.error().c_str(),
+			expression_string.c_str());
+
+		return false;
+	}
+
+	if (!exprtk::expression_helper<T>::is_constant(expression))
+	{
+		LOG_T(TAG, "Calculate() - Expression did not compile to a constant!   Expression: %s",
+			expression_string.c_str());
+
+		return false;
+	}
+
+	result = expression.value();
+	int _decimal_count = 0;
+	owner_->Read("Bio.Cell.Model.NumberWithDecimalCount", _decimal_count);
+	return true;
+}
+/*
 bool ConditionEval::Calculate(const String& szParam, double& dResult)
 {
 	dResult = 0.0;
@@ -401,7 +429,7 @@ bool ConditionEval::Calculate(const String& szParam, double& dResult)
 	else
 		return false;
 }
-
+*/
 bool ConditionEval::Brackets(const String& strSentence, int& nPos, T_TokenType& enumTokenType, String& strToken, double& dResult)
 {
 	switch (enumTokenType)
@@ -528,7 +556,7 @@ bool ConditionEval::searchToken(const String& strSentence, int& nPos, T_TokenTyp
 			//}
 			//else
 			//{
-			//	//LOG_E("DNA",  "!!!!!!!!!!  Invalid operator in searchToken(%s)  !!!!!!!!!!", strSentence.c_str());
+			//	//LOG_E("DNA::ConditionEval",  "!!!!!!!!!!  Invalid operator in searchToken(%s)  !!!!!!!!!!", strSentence.c_str());
 			//	//assert(false);
 			//	return false;
 			//}
@@ -539,7 +567,7 @@ bool ConditionEval::searchToken(const String& strSentence, int& nPos, T_TokenTyp
 			bRet = true;
 			break;
 		case STRING:
-			//LOG_E("DNA",  "!!!!!!!!!!  Invalid operator in searchToken(%s)  !!!!!!!!!!", strSentence.c_str());
+			//LOG_E("DNA::ConditionEval",  "!!!!!!!!!!  Invalid operator in searchToken(%s)  !!!!!!!!!!", strSentence.c_str());
 			//assert(false);
 			//return false;
 			bRet = false;
@@ -550,7 +578,7 @@ bool ConditionEval::searchToken(const String& strSentence, int& nPos, T_TokenTyp
 		case OPERATOR:
 			break;
 		default:
-			LOG_E("DNA", "!!!!!!!!!!  Invalid operator in searchToken(%s)  !!!!!!!!!!", strSentence.c_str());
+			LOG_E("DNA::ConditionEval", "!!!!!!!!!!  Invalid operator in searchToken(%s)  !!!!!!!!!!", strSentence.c_str());
 			assert(false);
 			return false;
 		}
@@ -577,7 +605,7 @@ bool ConditionEval::Eval(const String& param, bool fill_default_model_name)
 			double dOperand;
 			if (Calculate(strToken, dOperand) == true)
 			{
-				strOperand = std::to_string(dOperand);
+				strOperand = to_string_with_precision(dOperand, DEFAULT_PRECISION);
 			}
 			else
 			{
@@ -591,7 +619,7 @@ bool ConditionEval::Eval(const String& param, bool fill_default_model_name)
 				//	bRet = true;
 				//else
 				//{
-				//	LOG_E("DNA", "!!!!!!!!!!  Invalid operator in C_Eval(%s)  !!!!!!!!!!", szParam);
+				//	LOG_E("DNA::ConditionEval", "!!!!!!!!!!  Invalid operator in C_Eval(%s)  !!!!!!!!!!", szParam);
 				//	assert(false);
 				//	return false;
 				//}
@@ -613,7 +641,7 @@ bool ConditionEval::Eval(const String& param, bool fill_default_model_name)
 					bRet &= Eval(strToken, fill_default_model_name);
 				break;
 			default:
-				//LOG_E("DNA", "!!!!!!!!!!  Invalid operator in C_Eval(%s)  !!!!!!!!!!", szParam);
+				//LOG_E("DNA::ConditionEval", "!!!!!!!!!!  Invalid operator in C_Eval(%s)  !!!!!!!!!!", szParam);
 				//assert(false);
 				CompareSourceTarget(strOperand, enumOperator, strToken, bRet);
 				break;
@@ -641,7 +669,10 @@ bool ConditionEval::Eval(const String& param, bool fill_default_model_name)
 			}
 			try
 			{
-				bRet &= Compare(stod(strOperand), enumOperator, stod(strToken));
+				if (stod(strOperand) - stoll(strOperand) == 0.0 && stod(strToken) - stoll(strToken) == 0.0)
+					bRet &= Compare(stoll(strOperand), enumOperator, stoll(strToken));
+				else
+					bRet &= Compare(stod(strOperand), enumOperator, stod(strToken));
 			}
 			catch (...)
 			{
@@ -656,7 +687,9 @@ bool ConditionEval::Eval(const String& param, bool fill_default_model_name)
 			else if (strToken == ">" || strToken == GREATER_UTF8)
 				enumOperator = GREATER;
 			else if (strToken == ">=" || strToken == GREATER_EQUAL_UTF8)
+			{
 				enumOperator = GREATER_EQUAL;
+			}
 			else if (strToken == "<" || strToken == LESS_UTF8)
 				enumOperator = LESS;
 			else if (strToken == "<=" || strToken == LESS_EQUAL_UTF8)
@@ -664,10 +697,28 @@ bool ConditionEval::Eval(const String& param, bool fill_default_model_name)
 			else if (strToken == "&&")
 			{
 				if (bRet == false)
-					return false;
+				{
+					enumType = _getToken(param.substr(nPos), strToken, nPos);
+					while (enumType != OPERATOR || strToken != "||")
+					{
+						enumType = _getToken(param.substr(nPos), strToken, nPos);
+						if (enumType == INVALID_TOKEN_TYPE)
+							break;
+					}
+					if (strToken == "||")
+					{
+						bRet = true;
+						continue;
+					}
+					else
+					{
+						return false;
+					}
+				}
 				else
 				{
-					enumOperator = AND;
+					//enumOperator = AND;
+					enumOperator = INVALID_OPERATOR;
 					strOperand = "";
 				}
 			}
@@ -684,18 +735,22 @@ bool ConditionEval::Eval(const String& param, bool fill_default_model_name)
 			}
 			else
 			{
-				LOG_E("DNA", "!!!!!!!!!!  Invalid operator in C_Eval(%s)  !!!!!!!!!!", param.c_str());
+				LOG_E("DNA::ConditionEval", "!!!!!!!!!!  Invalid operator in C_Eval(%s)  !!!!!!!!!!", param.c_str());
 				assert(false);
 				return false;
 			}
 			break;
 		default:
-			LOG_E("DNA", "!!!!!!!!!!  Invalid operator in C_Eval(%s)  !!!!!!!!!!", param.c_str());
+			LOG_E("DNA::ConditionEval", "!!!!!!!!!!  Invalid operator in C_Eval(%s)  !!!!!!!!!!", param.c_str());
 			assert(false);
 			return false;
 		}
 	};
-	return bRet && (enumLastType != OPERATOR);
+	if (enumLastType == OPERATOR)
+	{
+		CompareSourceTarget(strOperand, enumOperator, "", bRet);
+	}
+	return bRet;
 }
 
 template<typename T>
@@ -723,11 +778,10 @@ bool ConditionEval::Compare(const T& srcSource, T_Operator enumOperator, const T
 		bRet = (srcSource <= srcTarget);
 		break;
 	case INVALID_OPERATOR:
-		LOG_E("DNA", "!!!!!!!!!! ConditionEval::Compare() Invalid operator  !!!!!!!!!!");
-		assert(false);
-		return false;
+		LOG_E("DNA::ConditionEval", "!!!!!!!!!! ConditionEval::Compare() Invalid operator  !!!!!!!!!!");
+		break;
 	default:
-		LOG_W("DNA", "Warning ConditionEval::Compare() Unsupported operator  !!!!!!!!!!");
+		LOG_W("DNA::ConditionEval", "Warning ConditionEval::Compare() Unsupported operator %d  !!!!!!!!!!", enumOperator);
 		break;
 	}
 	return bRet;
@@ -770,6 +824,41 @@ bool ConditionEval::findOperator(const String& cstrSentence)
 	return enumType == OPERATOR;
 }
 
+void ConditionEval::ReplaceUTF8Operator(String& sentence)
+{
+	if (sentence.size() == 0)
+		return;
+	const Array<Pair<String, String>> OP_PAIR = {
+		//{"(?<![=!<>])=(?!=)", " =="},
+		{"&&", "and"},
+		{"R\"(||)\"", "or"},
+		{NOT_EQUAL_UTF8,"!="},
+		{EQUAL_UTF8, "=="},
+		{GREATER_UTF8, ">"},
+		{LESS_UTF8, "<"},
+		{GREATER_EQUAL_UTF8, ">="},
+		{LESS_EQUAL_UTF8, "<="},
+		{PLUS_UTF8, "+"},
+		{MINUS_UTF8, "-"},
+		{PRODUCT_UTF8, "*"},
+		{DIVID_UTF8, "/"}
+	};
+	for (auto& elem : OP_PAIR)
+	{
+		sentence = std::regex_replace(sentence, std::regex(elem.first), elem.second);
+	}
+	size_t _pos = 0;
+	while ((_pos = sentence.find('=', _pos)) != String::npos)
+	{
+		if (_pos > 0 && sentence[_pos-1] != '!' && sentence[_pos-1] != '=' && sentence[_pos-1] != '<' && sentence[_pos-1] != '>' || sentence[_pos+1] != '=')
+		{
+			sentence.insert(_pos, 1, '=');
+			_pos++;
+		}
+		_pos++;
+	}
+}
+
 void ConditionEval::RetrieveData(const String& src, String& target, const String& default_value)
 {
 	String _model_name = "";
@@ -798,16 +887,55 @@ void ConditionEval::RetrieveData(const String& src, String& target, const String
 					owner_->Read(_model_name.substr(0, _start_pos), _operand);
 					if (_model_name.substr(_end_pos + 1, sizeof(".size") - 1) == ".size" || _model_name.substr(_end_pos + 1, sizeof(".length") - 1) == ".length")
 					{
-						target = std::to_string(_operand.size());
+						target = to_string_with_precision(_operand.size(), DEFAULT_PRECISION);
 					}
 				}
 				else
 				{
 					Array<String> _operand;
 					owner_->Read(_model_name.substr(0, _start_pos), _operand);
-					int _index = stoi(_model_name.substr(_start_pos + 1, _end_pos - _start_pos - 1));
-					if (_index < _operand.size())
-						target = _operand[_index];
+					if (_operand.size() > 0)
+					{
+						int _index = stoi(_model_name.substr(_start_pos + 1, _end_pos - _start_pos - 1));
+						if (_index < _operand.size())
+							target = _operand[_index];
+					}
+					else
+					{
+						String _operand;
+						owner_->Read(_model_name.substr(0, _start_pos), _operand);
+						if (_operand.size() > 0)
+						{
+							try
+							{
+								json _root = json::parse(_operand);
+								//if (_root.contains(_model_name.substr(_start_pos + 1, _end_pos - _start_pos - 1)))
+								//	target = _root[_model_name.substr(_start_pos + 1, _end_pos - _start_pos - 1)].get<String>();
+								size_t _path_end_pos = _start_pos;
+								_path_end_pos = _model_name.rfind(']');			// ex. XXX.XXX.XXX[item1][item2]
+								if (_path_end_pos < _model_name.size() - 1)
+									_path_end_pos++;
+								else
+									_path_end_pos = String::npos;
+								String _path_str = _model_name.substr(_start_pos, _path_end_pos - _start_pos);
+								_path_str.erase(std::remove(_path_str.begin(), _path_str.end(), '\"'), _path_str.end());
+								_path_str.erase(std::remove(_path_str.begin(), _path_str.end(), ']'), _path_str.end());
+								std::replace(_path_str.begin(), _path_str.end(), '[', '/');
+								owner_->ReplacePathIndex(_path_str);
+								if (_path_str.back() == '/')
+									_path_str.pop_back();
+								json::json_pointer _target_ptr(_path_str);
+								if (_root[_target_ptr].is_null())
+									target = "";
+								else
+									target = _root[_target_ptr].dump();
+							}
+							catch (const std::exception&)
+							{
+								LOG_E("DNA::ConditionEval", "Exception when retrieving data from JSON %s", _operand.c_str());
+							}
+						}
+					}
 				}
 			}
 		}
@@ -838,12 +966,25 @@ bool ConditionEval::IsNumberType(const String& strToken)
 void ConditionEval::CompareSourceTarget(const String& strOperand, T_Operator enumOperator, const String& strToken, bool& bRet)
 {
 	double dTargetOperand;
+	String _strOperand = strOperand;
 	if (Calculate(strToken, dTargetOperand) == true)
 	{
-		assert(strOperand != "");
-		bRet &= Compare(stod(strOperand), enumOperator, dTargetOperand);
+		//assert(strOperand != "");
+		if (_strOperand == "")
+		{
+			if (enumOperator == INVALID_OPERATOR && (strToken == "true" || strToken == "false"))
+			{
+				bRet &= (strToken == "true");
+				return;
+			}
+			else
+			{
+				_strOperand = "0";
+			}
+		}
+		bRet &= Compare(stod(_strOperand), enumOperator, dTargetOperand);
 	}
-	else if (strToken.back() == ')' && strToken.find('(') != String::npos)
+	else if (strToken.size() >= 2 && strToken.back() == ')' && strToken.find('(') != String::npos)
 	{
 		bool _value = false;
 		size_t _pos = strToken.find('(');
@@ -873,4 +1014,90 @@ void ConditionEval::CompareSourceTarget(const String& strOperand, T_Operator enu
 		else
 			bRet &= Compare(strOperand, enumOperator, strTargetOperand);
 	}
+}
+
+int ConditionEval::getFullSentence(const String& sentence, int startPos, bool treat_as_string, T_TokenType& enumType, T_TokenType defaultType)
+{
+	int nPos = startPos;
+	bool bContinue = true;
+	char _prev_char = '\0';
+	while ((bContinue) && (nPos < sentence.size()))
+	{
+		switch (sentence[nPos])
+		{
+		case '&':
+		case '|':
+			if ((treat_as_string == false || _prev_char == '"') && nPos < sentence.size() - 1 && sentence[nPos + 1] == sentence[nPos])
+				bContinue = false;
+			else
+			{
+				_prev_char = sentence[nPos];
+				nPos++;
+			}
+			break;
+		case '!':
+			if ((treat_as_string == false || _prev_char == '"') && nPos < sentence.size() - 1 && sentence[nPos + 1] == '=')
+			{
+				enumType = defaultType;
+				bContinue = false;
+			}
+			else
+			{
+				_prev_char = sentence[nPos];
+				nPos++;
+			}
+			break;
+		case '=':
+		case '>':
+		case '<':
+			if (treat_as_string == false || _prev_char == '"')
+			{
+				enumType = defaultType;
+				bContinue = false;
+			}
+			else
+			{
+				_prev_char = sentence[nPos];
+				nPos++;
+			}
+			break;
+		case '\xe2':
+			if (sentence[nPos + 1] == '\x89' && (sentence[nPos + 2] == '\xa0' || sentence[nPos + 2] == '\xa7' || sentence[nPos + 2] == '\xa6') && (treat_as_string == false || _prev_char == '"'))
+			{
+				enumType = defaultType;
+				bContinue = false;
+			}
+			else
+			{
+				_prev_char = sentence[nPos];
+				nPos++;
+			}
+			break;
+		case '\xef':
+			if (sentence[nPos + 1] == '\xbc' && (sentence[nPos + 2] == '\x9c' || sentence[nPos + 2] == '\x9d' || sentence[nPos + 2] == '\x9e') && (treat_as_string == false || _prev_char == '"'))
+			{
+				enumType = defaultType;
+				bContinue = false;
+			}
+			else
+			{
+				_prev_char = sentence[nPos];
+				nPos++;
+			}
+			break;
+		case '(':
+		case ')':
+			//LOG_E("DNA::ConditionEval",  "!!!!!!!!!!  Invalid operator in _getToken(%s)  !!!!!!!!!!", sentence.c_str());
+			//assert(false);
+			//break;
+		case ' ':
+			nPos++;
+			break;
+		default:
+			_prev_char = sentence[nPos];
+			nPos++;
+			break;
+		}
+	}
+	return nPos;
 }

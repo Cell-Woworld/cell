@@ -142,6 +142,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
+      <StackReserveSize>0x10000000</StackReserveSize>
     </Link>
     <PostBuildEvent>
       <Command>
@@ -261,6 +262,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
+      <StackReserveSize>0x10000000</StackReserveSize>
     </Link>
     <PostBuildEvent>
       <Command>

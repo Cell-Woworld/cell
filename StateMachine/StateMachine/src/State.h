@@ -7,6 +7,7 @@
 #include <vector>
 #include <deque>
 #include "Transition.h"
+#include "internal/IStateMachine.h"
 
 class CHistory;
 class IEvent;
@@ -18,7 +19,7 @@ class IState;
 class CState
 {
 public:
-    CState(const char* szName ="", IState* pCallback=nullptr);
+    CState(const char* szName ="", int nStateType = STATE, IState* pCallback=nullptr);
     virtual ~CState();
     void InitialState(CState* s);
     virtual CTransition* AddTrans(CState* s, IEvent* e, std::vector<CTransition::ActionPair> const &a = std::vector<CTransition::ActionPair>(), CTransition::ConditionPair* c = nullptr, bool isNoTarget = false);
@@ -58,11 +59,11 @@ protected:
     CState* CurrentState;
     CState* ParentState;
     CState* StartState;
-    IAction* m_pStateAction;
     StateVector m_vectState;
     TransVector m_vectTrans;
 	std::string m_strName;
 	std::string full_path_name_;
+    int state_type_;
 
 protected:
     CHistory* m_pHistory;

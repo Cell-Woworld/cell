@@ -15,7 +15,7 @@
 
 using namespace std;
 
-CState::CState(const char* szName, IState* pCallback)
+CState::CState(const char* szName, int nStateType, IState* pCallback)
 {
     CurrentState = nullptr;
     StartState = nullptr;
@@ -24,6 +24,7 @@ CState::CState(const char* szName, IState* pCallback)
     m_pDeepHistory = nullptr;
     ConcurrentState = false;
     m_strName = szName;
+    state_type_ = nStateType;
 }
 
 CState::~CState()
@@ -54,7 +55,7 @@ void CState::InitialState(CState* s)
 
 CTransition* CState::AddTrans(CState* s, IEvent* e, std::vector<CTransition::ActionPair> const &a, CTransition::ConditionPair* c, bool isNoTarget)
 {
-	CTransition* newTransition = nullptr;
+    CTransition* newTransition = nullptr;
     if (c != nullptr)
     {
         if ( (m_vectTrans.size() > 0) && (m_vectTrans.back()->getCondition()->pCondition == nullptr) )
@@ -102,7 +103,7 @@ int CState::EventFired(const std::vector<IEvent*>& e)
         if ( pEventFiredState->get_ConcurrentState() == true)
         {
             for (unsigned int i=0; i<pEventFiredState->m_vectState.size(); i++)
-                m_vectState[i]->EventFired(e);
+                pEventFiredState->m_vectState[i]->EventFired(e);
             return IStateMachine::TO_NEXT_STATE;
         }
         else if ( pEventFiredState->CurrentState != nullptr )
@@ -133,7 +134,17 @@ int CState::EventFired(const std::vector<IEvent*>& e)
                 return iRetval;
             }
         }
-        pEventFiredState = pEventFiredState->get_ParentState();
+        if (pCurrentState->state_type_ == FINAL_STATE)
+        {
+            if (pEventFiredState->get_ParentState() != nullptr)
+                pEventFiredState = pEventFiredState->get_ParentState()->get_ParentState();
+            else
+                break;
+        }
+        else
+        {
+            pEventFiredState = pEventFiredState->get_ParentState();
+        }
     }
     return IStateMachine::NOTHING_TO_DO;
 }
@@ -153,8 +164,12 @@ int CState::ChangeState(CTransition* pTrans, bool bHistoryPath)
             else
                 printf("StateMachine::ChangeState() no such action when event \"%s\" fired\n", pTrans->getEvent()->GetName());
         }
-		if (!pTrans->isNoTarget())
-			EnterNotify();
+        if (!pTrans->isNoTarget())
+        {
+			//EnterNotify();
+            s->Enter(bHistoryPath, pTrans->isNoTarget());
+        }
+
 		if (get_ParentState()->get_CurrentState() == this)
 			return IStateMachine::RECYCLE_TO_SELF;
 		else
@@ -280,7 +295,7 @@ int CState::ChangeState(CTransition* pTrans, bool bHistoryPath)
                 else
                     printf("StateMachine::ChangeState() no such action when event \"%s\" fired\n", pTrans->getEvent()->GetName());
             }
-            CState *next = 0;
+            CState *next = nullptr;
             while( destStates.size() > 0 )
             {
                 next = destStates.front();
@@ -529,7 +544,7 @@ void CState::get_ActiveStates(const char* szActiveStatList[], const int iMaxList
         if ( pCurrentState->get_ConcurrentState() == true)
         {
             for (unsigned int i=0; i<pCurrentState->m_vectState.size(); i++)
-                m_vectState[i]->get_ActiveStates(szActiveStatList, iMaxListSize, iTotalCount);
+                pCurrentState->m_vectState[i]->get_ActiveStates(szActiveStatList, iMaxListSize, iTotalCount);
             return;
         }
         else if ( pCurrentState->CurrentState != nullptr )
@@ -571,7 +586,8 @@ void CState::set_CurrentStateLink()
         if (pParentState->m_pHistory != nullptr)
             pParentState->m_pHistory->set_CurrentState(pCurrentState);
         if (pParentState->m_pDeepHistory != nullptr)
-            pParentState->m_pDeepHistory->set_CurrentState(this);
+            //pParentState->m_pDeepHistory->set_CurrentState(this);
+            pParentState->m_pDeepHistory->set_CurrentState(pCurrentState);
         pCurrentState = pParentState;
     }
 }

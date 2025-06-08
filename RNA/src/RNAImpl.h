@@ -83,7 +83,7 @@ class RNAImpl : public IRNAImpl, public IBiomolecule
 public:
 	RNAImpl(IBiomolecule* owner, const char* name, RNA* callback)
 		: IBiomolecule(owner)
-		, callback_(callback) 
+		, callback_(callback)
 	{
 		init(name);
 		BuildTypeHastable();
@@ -91,15 +91,18 @@ public:
 	virtual ~RNAImpl() {
 		owner()->unbind(this);
 	};
-
-	void Remove(const String& name, bool internal_only = false);
+#pragma region IRNAImpl
+	virtual void Write(const String& name, const char* value, bool internal_use = false);
+	virtual void Remove(const String& name, bool internal_only = false);
 	virtual void Clone(const String& target_name, const String& src_name);
 	virtual void SendEvent(const String& name, const String& payload = "");
+	virtual void RaiseEvent(const String& name, const String& payload = "", IBiomolecule* src = nullptr);
 	virtual void OnEvent(const DynaArray& name);
-	virtual void Bind(void* desc_pool);
+	virtual void Bind();
 	virtual const char* name();
 	virtual const char* version() { return get_version(); };
-	virtual const Obj<IModel> model();
+#pragma endregion IRNAImpl
+#pragma region IBiomolecule
 	virtual void activate();
 	virtual void add_event(const DynaArray& msg_name, const DynaArray& payload, IBiomolecule* src);
 	virtual void add_priority_event(const DynaArray& msg_name, const DynaArray& payload, IBiomolecule* src);
@@ -107,50 +110,58 @@ public:
 	virtual void do_event(const DynaArray& msg_name);
 	virtual const char* get_root_path() { return owner()->get_root_path(); };
 	virtual const char* get_version();
+	virtual void* FindMessageTypeByName(const char* name) {
+		return callback_->FindMessageTypeByName(name);
+	};
+	virtual void* FindValueByName(const char* msg_name, int index, const char* name) {
+		return callback_->FindValueByName(msg_name, index, name);
+	};
 
+#pragma endregion IBiomolecule
 	DECLARE_EXPORT_RW_API(int32_t, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(uint32_t, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(int64_t, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(uint64_t, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(double, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(String, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Array<int32_t>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Array<uint32_t>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Array<int64_t>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Array<uint64_t>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Array<double>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Array<String>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Map_String_int32, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Map_String_uint32, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Map_String_int64, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Map_String_uint64, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Map_String_double, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Map_String_String, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(UoMap_String_int32, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(UoMap_String_uint32, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(UoMap_String_int64, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(UoMap_String_uint64, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(UoMap_String_double, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(UoMap_String_String, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Set<int32_t>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Set<uint32_t>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Set<int64_t>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Set<uint64_t>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Set<double>, READ_FUNC, WRITE_FUNC)
-	DECLARE_EXPORT_RW_API(Set<String>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(uint32_t, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(long long, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(unsigned long long, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(double, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(String, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Array<int32_t>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Array<uint32_t>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Array<long long>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Array<unsigned long long>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Array<double>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Array<String>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Map_String_int32, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Map_String_uint32, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Map_String_longlong, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Map_String_ulonglong, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Map_String_double, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Map_String_String, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(UoMap_String_int32, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(UoMap_String_uint32, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(UoMap_String_longlong, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(UoMap_String_ulonglong, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(UoMap_String_double, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(UoMap_String_String, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Set<int32_t>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Set<uint32_t>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Set<long long>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Set<unsigned long long>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Set<double>, READ_FUNC, WRITE_FUNC)
+		DECLARE_EXPORT_RW_API(Set<String>, READ_FUNC, WRITE_FUNC)
 
-	DECLARE_EXPORT_RW_API(bool, , )
-	DECLARE_EXPORT_RW_API(Array<bool>, , )
-	DECLARE_EXPORT_RW_API(Map_String_bool, , )
-	DECLARE_EXPORT_RW_API(UoMap_String_bool, , )
-	DECLARE_EXPORT_RW_API(Set<bool>, , )
+		DECLARE_EXPORT_RW_API(bool, , )
+		DECLARE_EXPORT_RW_API(Array<bool>, , )
+		DECLARE_EXPORT_RW_API(Map_String_bool, , )
+		DECLARE_EXPORT_RW_API(UoMap_String_bool, , )
+		DECLARE_EXPORT_RW_API(Set<bool>, , )
+		DECLARE_EXPORT_RW_API(nlohmann::json, , )
 
-	virtual void Write(const String& name, const char* value, bool internal_use = false);
 private:
 	//bool is_digital(const String& s) {
 	//	return !s.empty() && std::find_if(s.begin(),
 	//		s.end(), [](char c) { return !std::isdigit(c); }) == s.end();
 	//};
+	const Obj<IModel> model();
 	bool is_number(const String& token) {
 		return std::regex_match(token, std::regex(("((\\+|-)?[[:digit:]]+)(\\.(([[:digit:]]+)?))?")));
 	}
@@ -175,7 +186,8 @@ private:
 	void Deserialize(bool, const DynaArray& data, T2& value);
 	template <typename T2>
 	void Deserialize(Array<bool>, const DynaArray& data, T2& value);
-
+	template <typename T2>
+	void Deserialize(nlohmann::json, const DynaArray& data, T2& value);
 #pragma region SINGLE
 	// Single to Single
 	template<typename T1, typename T2> void TypeConversion(const T1& src, T2& dest);
@@ -184,6 +196,8 @@ private:
 	void TypeConversion(const bool& src, String& dest);
 	void TypeConversion(const String& src, bool& dest);
 	void TypeConversion(const String& src, String& dest);
+	void TypeConversion(const String& src, long long& dest);
+	void TypeConversion(const String& src, unsigned long long& dest);
 #pragma endregion SINGLE
 
 #pragma region ARRAY

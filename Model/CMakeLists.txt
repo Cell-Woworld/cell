@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.5)
 project(Model VERSION 1.1)
 
 #########################################
@@ -35,7 +35,7 @@ if(WIN32)
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D STATIC_API")
 		add_library(${PROJECT_NAME} STATIC ${${PROJECT_NAME}_SRC})
 		SET_TARGET_PROPERTIES(${PROJECT_NAME} PROPERTIES PREFIX "")
-		add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND xcopy /y $<CONFIG>\\${PROJECT_NAME}.lib ..\\..\\lib\\)
+		add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND xcopy /y ${PROJECT_NAME}.lib ..\\..\\lib\\)
 	endif()
 elseif(APPLE)
 	set(CMAKE_CXX_FLAGS "-std=c++14 -g \
@@ -58,7 +58,7 @@ elseif(APPLE)
 		add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND cp -f ${CMAKE_BUILD_TYPE}-${SDK_NAME}/lib${PROJECT_NAME}.a ../../lib/)
 	endif()
 elseif(UNIX)
-	set(CMAKE_CXX_FLAGS "-std=c++14 -fopenmp -Os -g0 \
+	set(CMAKE_CXX_FLAGS "-std=c++17 -fopenmp -Os -g0 \
 	-D VERSION_MAJOR=${MODULE_VERSION_MAJOR} -D VERSION_MINOR=${MODULE_VERSION_MINOR} \
 	-D VERSION_BUILD=${MODULE_VERSION_BUILD} -D VERSION_REVISION=\\\"${GIT_BRANCH}_${GIT_HASH}\\\" ")
 	set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG")

@@ -25,6 +25,8 @@ namespace Websocket
 	Mutex Websocket::ws_uuid_map_mutex_;
 	bool Websocket::ssl_ = false;
 	Set<void*> Websocket::ignored_ws_set_;
+	Queue<Pair<String, String>> Websocket::message_queue_;
+	uWS::Loop* Websocket::ws_loop_ = nullptr;
 
 	Websocket::Websocket(IBiomolecule* owner)
 		: RNA(owner, "Websocket", this)
@@ -38,13 +40,13 @@ namespace Websocket
 		MutexLocker _locker(ws_uuid_map_mutex_);
 		if (!ssl_)
 		{
-			T_WebSocket* _ws = (T_WebSocket*)ReadValue<uint64_t>(Service::Config::descriptor()->full_name() + ".id");
+			T_WebSocket* _ws = (T_WebSocket*)ReadValue<address_t>(Service::Config::descriptor()->full_name() + ".id");
 			if (_ws != nullptr && ws_uuid_map_.count(_ws) > 0)
 				ws_uuid_map_.erase(_ws);
 		}
 		else
 		{
-			T_WSS* _ws = (T_WSS*)ReadValue<uint64_t>(Service::Config::descriptor()->full_name() + ".id");
+			T_WSS* _ws = (T_WSS*)ReadValue<address_t>(Service::Config::descriptor()->full_name() + ".id");
 			if (_ws != nullptr && wss_uuid_map_.count(_ws) > 0)
 				wss_uuid_map_.erase(_ws);
 		}
@@ -73,7 +75,9 @@ namespace Websocket
 			std::cout << "****** Action name: " << _name << " ******" << "\n";
 			if (!ssl_)
 			{
-				T_WebSocket* _ws = (T_WebSocket*)ReadValue<uint64_t>(Service::Config::descriptor()->full_name() + ".id");
+				T_WebSocket* _ws = (T_WebSocket*)ReadValue<address_t>(Service::Config::descriptor()->full_name() + ".id");
+				//String _stem_uuid = ReadValue<String>(Service::Config::descriptor()->full_name() + ".stem_id");
+				//WriteValue("Bio.Cell.Stem.uuid", _stem_uuid);
 				//PerSocketData* _user_data = (PerSocketData*)ws_->getUserData();
 				//memset(_user_data->uuid, 0, sizeof(_user_data->uuid));
 				//strcpy(_user_data->uuid, _uuid.c_str());
@@ -105,12 +109,25 @@ namespace Websocket
 						_remote_address.pop_back();
 
 					WriteValue("Bio.Cell.Network.RemoteIPAddress", _remote_address);
-					ws_uuid_map_.insert(make_pair(_ws, ReadValue<String>("Bio.Cell.uuid")));
+					String _uuid = ReadValue<String>("Bio.Cell.uuid");
+					ws_uuid_map_.insert(make_pair(_ws, _uuid));
+					while (!message_queue_.empty())
+					{
+						Bio::Cell::ForwardEvent _forward_event;
+						_forward_event.set_uuid(_uuid);
+						_forward_event.set_name(message_queue_.front().first);
+						_forward_event.set_payload(message_queue_.front().second);
+						this->SendEvent(Bio::Cell::ForwardEvent::descriptor()->full_name(), _forward_event.SerializeAsString());
+						LOG_I(TAG, "(From queue) Forward message %s to %s, payload=%s", _forward_event.name().c_str(), _forward_event.uuid().c_str(), _forward_event.payload().c_str());
+						message_queue_.pop();
+					}
 				}
 			}
 			else
 			{
-				T_WSS* _ws = (T_WSS*)ReadValue<uint64_t>(Service::Config::descriptor()->full_name() + ".id");
+				T_WSS* _ws = (T_WSS*)ReadValue<address_t>(Service::Config::descriptor()->full_name() + ".id");
+				//String _stem_uuid = ReadValue<String>(Service::Config::descriptor()->full_name() + ".stem_id");
+				//WriteValue("Bio.Cell.Stem.uuid", _stem_uuid);
 				//PerSocketData* _user_data = (PerSocketData*)ws_->getUserData();
 				//memset(_user_data->uuid, 0, sizeof(_user_data->uuid));
 				//strcpy(_user_data->uuid, _uuid.c_str());
@@ -142,7 +159,17 @@ namespace Websocket
 						_remote_address.pop_back();
 
 					WriteValue("Bio.Cell.Network.RemoteIPAddress", _remote_address);
-					wss_uuid_map_.insert(make_pair(_ws, ReadValue<String>("Bio.Cell.uuid")));
+					String _uuid = ReadValue<String>("Bio.Cell.uuid");
+					wss_uuid_map_.insert(make_pair(_ws, _uuid));
+					while (!message_queue_.empty())
+					{
+						Bio::Cell::ForwardEvent _forward_event;
+						_forward_event.set_uuid(_uuid);
+						_forward_event.set_name(message_queue_.front().first);
+						_forward_event.set_payload(message_queue_.front().second);
+						this->SendEvent(Bio::Cell::ForwardEvent::descriptor()->full_name(), _forward_event.SerializeAsString());
+						message_queue_.pop();
+					}
 				}
 			}
 			break;
@@ -162,48 +189,78 @@ namespace Websocket
 		{
 			if (name != ReadValue<String>("Bio.Cell.Current.Event"))
 				break;
-			MutexLocker _locker(ws_uuid_map_mutex_);
+			//MutexLocker _locker(ws_uuid_map_mutex_);
 			if (!ssl_)
 			{
-				T_WebSocket* _ws = (T_WebSocket*)ReadValue<uint64_t>(Service::Config::descriptor()->full_name() + ".id");
+				T_WebSocket* _ws = (T_WebSocket*)ReadValue<address_t>(Service::Config::descriptor()->full_name() + ".id");
 				if (_ws != nullptr && ws_uuid_map_.count(_ws) > 0)
 				{
-					Web::WebEvent _command;
-					_command.set_name(_name);
-					_command.set_payload(ReadValue<String>(String("encode.") + _name));
-					try
+					if (_name == Web::RawMessage::descriptor()->full_name())
 					{
-						_ws->send(_command.SerializeAsString());
+						String _raw_message = ReadValue<String>(_name + ".payload");
+						//_ws->send(_raw_message);
+						ws_loop_->defer([_ws, _raw_message]() {
+							_ws->send(_raw_message);
+							});
 					}
-					catch (const std::exception& e)
+					else
 					{
-						printf("Web socket is not available. exception: %s\n", e.what());
-					}
-					catch (...)
-					{
-						printf("Web socket is not available.\n");
+						Web::WebEvent _command;
+						_command.set_name(_name);
+						_command.set_payload(ReadValue<String>(String("encode.") + _name));
+						try
+						{
+							//_ws->send(_command.SerializeAsString());
+							String _message = _command.SerializeAsString();
+							ws_loop_->defer([_ws, _message]() {
+								_ws->send(_message);
+								});
+						}
+						catch (const std::exception& e)
+						{
+							printf("Web socket is not available. exception: %s\n", e.what());
+						}
+						catch (...)
+						{
+							printf("Web socket is not available.\n");
+						}
 					}
 				}
 			}
 			else
 			{
-				T_WSS* _ws = (T_WSS*)ReadValue<uint64_t>(Service::Config::descriptor()->full_name() + ".id");
+				T_WSS* _ws = (T_WSS*)ReadValue<address_t>(Service::Config::descriptor()->full_name() + ".id");
 				if (_ws != nullptr && wss_uuid_map_.count(_ws) > 0)
 				{
-					Web::WebEvent _command;
-					_command.set_name(_name);
-					_command.set_payload(ReadValue<String>(String("encode.") + _name));
-					try
+					if (_name == Web::RawMessage::descriptor()->full_name())
 					{
-						_ws->send(_command.SerializeAsString());
+						String _raw_message = ReadValue<String>(_name + ".payload");
+						//_ws->send(_raw_message);
+						ws_loop_->defer([_ws, _raw_message]() {
+							_ws->send(_raw_message);
+							});
 					}
-					catch (const std::exception& e)
+					else
 					{
-						printf("Web socket is not available. exception: %s\n", e.what());
-					}
-					catch (...)
-					{
-						printf("Web socket is not available.\n");
+						Web::WebEvent _command;
+						_command.set_name(_name);
+						_command.set_payload(ReadValue<String>(String("encode.") + _name));
+						try
+						{
+							//_ws->send(_command.SerializeAsString());
+							String _message = _command.SerializeAsString();
+							ws_loop_->defer([_ws, _message]() {
+								_ws->send(_message);
+								});
+						}
+						catch (const std::exception& e)
+						{
+							printf("Web socket is not available. exception: %s\n", e.what());
+						}
+						catch (...)
+						{
+							printf("Web socket is not available.\n");
+						}
 					}
 				}
 			}
@@ -217,8 +274,6 @@ namespace Websocket
 		/* ws->getUserData returns one of these */
 		static String _cert_filename = (cert_filename == "") ? NULL : cert_filename.c_str();
 		static String _key_filename = (key_filename == "") ? NULL : key_filename.c_str();
-		struct PerSocketData {
-		};
 		std::thread([this, port] {
 			if (!ssl_) {
 				uWS::TemplatedApp<!SSL>(
@@ -233,8 +288,12 @@ namespace Websocket
 					/* Settings */
 					.compression = uWS::SHARED_COMPRESSOR,
 					.maxPayloadLength = 64 * 1024 * 1024,
-					.idleTimeout = 60 * 30,
+					.idleTimeout = 60 * 16,
+					.closeOnBackpressureLimit = false,
+					.resetIdleTimeoutOnSend = true,
+					.sendPingsAutomatically = true,
 					/* Handlers */
+					.upgrade = nullptr,
 					.open = [this](auto* ws) {
 						uint64_t _incoming_connection = (uint64_t)(void*)ws;
 						NewConnection _new_connection;
@@ -247,28 +306,37 @@ namespace Websocket
 						Web::WebEvent _web_event;
 						String _web_event_payload(message);
 						if (_web_event_payload == "" || _web_event.ParseFromString(_web_event_payload) == false)
-							printf("!!! ERROR! Invalid web event: %s\n", _web_event_payload.c_str());
-						else
+						{
+							LOG_D(TAG, "Invalid web event: %s\n", _web_event_payload.c_str());
+							Web::WebEvent _customized_message;
+							_customized_message.set_name("customized message");
+							_customized_message.set_payload(_web_event_payload);
+							_web_event.set_name(Web::WebEvent::descriptor()->full_name());
+							_web_event.set_payload(_customized_message.SerializeAsString());
+						}
 						{
 							MutexLocker _locker(ws_uuid_map_mutex_);
-							if (ws_uuid_map_.count(ws) > 0)
+							if (ws_uuid_map_.count(ws) == 0)
+								this->message_queue_.push(make_pair(_web_event.name(), _web_event.payload()));
+							else
 							{
 								Bio::Cell::ForwardEvent _forward_event;
 								_forward_event.set_uuid(ws_uuid_map_[ws]);
 								_forward_event.set_name(_web_event.name());
 								_forward_event.set_payload(_web_event.payload());
 								this->SendEvent(Bio::Cell::ForwardEvent::descriptor()->full_name(), _forward_event.SerializeAsString());
+								LOG_T(TAG, "(Directly) Forward message %s to %s, payload=%s", _forward_event.name().c_str(), _forward_event.uuid().c_str(), _forward_event.payload().c_str());
 							}
 						}
 					},
-					.drain = [this](auto* ws) {
-						/* Check getBufferedAmount here */
+					.drain = [](auto*/*ws*/) {
+						/* Check ws->getBufferedAmount() here */
 					},
-					.ping = [this](auto* ws) {
-
+					.ping = [](auto*/*ws*/, std::string_view) {
+						/* Not implemented yet */
 					},
-					.pong = [this](auto* ws) {
-
+					.pong = [](auto*/*ws*/, std::string_view) {
+						/* Not implemented yet */
 					},
 					.close = [this](auto* ws, int code, std::string_view message) {
 						MutexLocker _locker(ws_uuid_map_mutex_);
@@ -294,6 +362,7 @@ namespace Websocket
 						if (token) {
 							std::cout << "Listening on port " << port << std::endl;
 						}
+						ws_loop_ = uWS::Loop::get();
 						}).run();
 			} else {
 				uWS::TemplatedApp<SSL>(
@@ -308,8 +377,12 @@ namespace Websocket
 						/* Settings */
 						.compression = uWS::SHARED_COMPRESSOR,
 						.maxPayloadLength = 64 * 1024 * 1024,
-						.idleTimeout = 60 * 30,
+						.idleTimeout = 60 * 16,
+						.closeOnBackpressureLimit = false,
+						.resetIdleTimeoutOnSend = true,
+						.sendPingsAutomatically = true,
 						/* Handlers */
+						.upgrade = nullptr,
 						.open = [this](auto* ws) {
 							uint64_t _incoming_connection = (uint64_t)(void*)ws;
 							NewConnection _new_connection;
@@ -322,11 +395,19 @@ namespace Websocket
 							Web::WebEvent _web_event;
 							String _web_event_payload(message);
 							if (_web_event_payload == "" || _web_event.ParseFromString(_web_event_payload) == false)
-								printf("!!! ERROR! Invalid web event: %s\n", _web_event_payload.c_str());
-							else
+							{
+								LOG_D(TAG, "Customized web event: %s\n", _web_event_payload.c_str());
+								Web::WebEvent _customized_message;
+								_customized_message.set_name("customized message");
+								_customized_message.set_payload(_web_event_payload);
+								_web_event.set_name(Web::WebEvent::descriptor()->full_name());
+								_web_event.set_payload(_customized_message.SerializeAsString());
+							}
 							{
 								MutexLocker _locker(ws_uuid_map_mutex_);
-								if (wss_uuid_map_.count(ws) > 0)
+								if (wss_uuid_map_.count(ws) == 0)
+									this->message_queue_.push(make_pair(_web_event.name(), _web_event.payload()));
+								else
 								{
 									Bio::Cell::ForwardEvent _forward_event;
 									_forward_event.set_uuid(wss_uuid_map_[ws]);
@@ -336,14 +417,14 @@ namespace Websocket
 								}
 							}
 						},
-						.drain = [this](auto* ws) {
-							/* Check getBufferedAmount here */
+						.drain = [](auto*/*ws*/) {
+							/* Check ws->getBufferedAmount() here */
 						},
-						.ping = [this](auto* ws) {
-
+						.ping = [](auto*/*ws*/, std::string_view) {
+							/* Not implemented yet */
 						},
-						.pong = [this](auto* ws) {
-
+						.pong = [](auto*/*ws*/, std::string_view) {
+							/* Not implemented yet */
 						},
 						.close = [this](auto* ws, int code, std::string_view message) {
 							MutexLocker _locker(ws_uuid_map_mutex_);
@@ -368,6 +449,7 @@ namespace Websocket
 							if (token) {
 								std::cout << "Listening on port " << port << std::endl;
 							}
+							ws_loop_ = uWS::Loop::get();
 							}).run();
 			}
 		}).detach();

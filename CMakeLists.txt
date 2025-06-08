@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.5)
 project(Kernel VERSION 1.0.0)
 
 if(ANDROID)
@@ -7,6 +7,94 @@ endif()
 
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(BUILD_STATIC_LIBS "Build static library" OFF)
+set(protobuf_ABSL_USED_TARGETS
+absl_log_internal_message 
+absl_log_initialize 
+absl_log_internal_check_op
+absl_log_internal_conditions
+absl_log_internal_globals
+absl_log_internal_format
+absl_log_internal_log_sink_set
+absl_log_internal_nullguard
+absl_log_internal_proto
+absl_log_severity
+absl_log_sink
+absl_log_entry
+absl_log_flags
+absl_log_globals
+absl_bad_any_cast_impl
+absl_failure_signal_handler
+absl_random_internal_randen_slow
+absl_bad_optional_access
+absl_flags
+absl_random_internal_seed_material
+absl_bad_variant_access
+absl_flags_commandlineflag
+absl_random_seed_gen_exception
+absl_flags_commandlineflag_internal
+absl_random_seed_sequences
+absl_flags_config
+absl_raw_hash_set
+absl_civil_time
+absl_flags_internal
+absl_raw_logging_internal
+absl_cord
+absl_flags_marshalling
+absl_scoped_set_env
+absl_cord_internal
+absl_flags_parse
+absl_spinlock_wait
+absl_cordz_functions
+absl_flags_private_handle_accessor
+absl_cordz_info
+absl_cordz_handle
+absl_stacktrace
+absl_flags_program_name
+absl_status
+absl_flags_reflection
+absl_statusor
+absl_cordz_sample_token
+absl_flags_usage
+absl_str_format_internal
+absl_flags_usage_internal
+absl_strerror
+absl_crc_cord_state
+absl_crc_cpu_detect
+absl_crc32c
+absl_crc_internal
+absl_graphcycles_internal
+absl_periodic_sampler
+absl_strings
+absl_hash
+absl_city
+absl_low_level_hash
+absl_random_distributions
+absl_strings_internal
+absl_hashtablez_sampler
+absl_random_internal_distribution_test_util
+absl_int128
+absl_random_internal_platform
+absl_synchronization
+absl_kernel_timeout_internal
+absl_symbolize
+absl_debugging_internal
+absl_demangle_internal
+absl_leak_check
+absl_random_internal_pool_urbg
+absl_throw_delegate
+absl_die_if_null
+absl_random_internal_randen
+absl_time
+absl_examine_stack
+absl_random_internal_randen_hwaes
+absl_time_zone
+absl_exponential_biased
+absl_random_internal_randen_hwaes_impl
+absl_malloc_internal
+absl_base
+utf8_range
+utf8_validity
+)
 
 file(MAKE_DIRECTORY bin/)
 file(MAKE_DIRECTORY lib/)

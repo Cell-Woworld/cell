@@ -10,6 +10,9 @@
 [submodule "Websocket/inc/zlib"]
 	path = Websocket/inc/zlib
 	url = https://github.com/madler/zlib
+[submodule "ndk-unzip/src"]
+	path = ndk-unzip/src
+	url = https://github.com/hanxi/ndk-unzip
 [submodule "Webservice/inc/cpp-httplib"]
 	path = Webservice/inc/cpp-httplib
 	url = https://github.com/yhirose/cpp-httplib

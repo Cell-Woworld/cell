@@ -24,12 +24,12 @@ IStateMachine::~IStateMachine()
     Destroy();
 }
 
-bool IStateMachine::Load(const char* szLogicMapFilename, BioSys::DNA* callback)
+bool IStateMachine::Load(const char* szLogicMap, BioSys::DNA* callback, bool isFile)
 {
     if (m_pStateMachineImpl == nullptr)
         return false;
     else
-        return m_pStateMachineImpl->Load(szLogicMapFilename, callback);
+        return m_pStateMachineImpl->Load(szLogicMap, callback, isFile);
 }
 
 int IStateMachine::EventFired(const char* szEventID)

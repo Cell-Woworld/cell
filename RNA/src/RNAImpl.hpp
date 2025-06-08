@@ -13,40 +13,42 @@ enum type_id_table_
 	type_bool,
 	type_int32_t,
 	type_uint32_t,
-	type_int64_t,
-	type_uint64_t,
+	type_longlong_t,
+	type_ulonglong_t,
 	type_double,
 	type_string,
 
 	type_bool_array,
 	type_int32_t_array,
 	type_uint32_t_array,
-	type_int64_t_array,
-	type_uint64_t_array,
+	type_longlong_t_array,
+	type_ulonglong_t_array,
 	type_double_array,
 	type_string_array,
+
+	type_json,
 
 	type_bool_set,
 	type_int32_t_set,
 	type_uint32_t_set,
-	type_int64_t_set,
-	type_uint64_t_set,
+	type_longlong_t_set,
+	type_ulonglong_t_set,
 	type_double_set,
 	type_string_set,
 
 	type_bool_map,
 	type_int32_t_map,
 	type_uint32_t_map,
-	type_int64_t_map,
-	type_uint64_t_map,
+	type_longlong_t_map,
+	type_ulonglong_t_map,
 	type_double_map,
 	type_string_map,
 
 	type_bool_uomap,
 	type_int32_t_uomap,
 	type_uint32_t_uomap,
-	type_int64_t_uomap,
-	type_uint64_t_uomap,
+	type_longlong_t_uomap,
+	type_ulonglong_t_uomap,
 	type_double_uomap,
 	type_string_uomap,
 };
@@ -61,11 +63,11 @@ void RNAImpl::activate() {
 
 void RNAImpl::add_event(const DynaArray& msg_name, const DynaArray& payload, IBiomolecule* src) {
 	//owner()->add_event(msg_name, payload, owner());
-	owner()->add_event(msg_name, payload, nullptr);
+	owner()->add_event(msg_name, payload, src);
 }
 
 void RNAImpl::add_priority_event(const DynaArray& msg_name, const DynaArray& payload, IBiomolecule* src) {
-	owner()->add_priority_event(msg_name, payload, owner());
+	owner()->add_priority_event(msg_name, payload, src != nullptr ? src : owner());
 }
 
 void RNAImpl::on_event(const DynaArray& name_space, const DynaArray& msg_name, const DynaArray& payload)
@@ -75,12 +77,17 @@ void RNAImpl::on_event(const DynaArray& name_space, const DynaArray& msg_name, c
 
 void RNAImpl::do_event(const DynaArray& msg_name)
 {
- 	assert(false);
+	assert(false);
 }
 
 void RNAImpl::SendEvent(const String& name, const String& payload)
 {
 	add_event(name, payload, nullptr);
+}
+
+void RNAImpl::RaiseEvent(const String& name, const String& payload, IBiomolecule* src)
+{
+	add_priority_event(name, payload, src);
 }
 
 void RNAImpl::OnEvent(const DynaArray& name)
@@ -98,9 +105,9 @@ void RNAImpl::Clone(const String& target_name, const String& src_name)
 	model()->Clone(target_name, src_name);
 }
 
-void RNAImpl::Bind(void* desc_pool)
+void RNAImpl::Bind()
 {
-	owner()->bind(this, desc_pool);
+	owner()->bind(this, nullptr);
 }
 
 const char* RNAImpl::name()
@@ -108,658 +115,677 @@ const char* RNAImpl::name()
 	return IBiomolecule::name().data();
 }
 
-const char* RNAImpl::get_version() 
-{ 
-	return (std::to_string(VERSION_MAJOR)+"."+std::to_string(VERSION_MINOR)+"."+std::to_string(VERSION_BUILD)+"."+VERSION_REVISION).c_str(); 
+const char* RNAImpl::get_version()
+{
+	return (std::to_string(VERSION_MAJOR) + "." + std::to_string(VERSION_MINOR) + "." + std::to_string(VERSION_BUILD) + "." + VERSION_REVISION).c_str();
 };
 
 #pragma region SINGLE
-	// Single to Single
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const T1& src, T2& dest) { dest = (T2)src; };
-	void RNAImpl::TypeConversion(const bool& src, String& dest) { dest = (src==true?"true":"false"); };
-	void RNAImpl::TypeConversion(const String& src, bool& dest) { 
-		if (src == "true")
-			dest = true;
-		else
-		{
-			if (is_number(src))
-				dest = (bool)stod(src);
-			else
-				dest = false;
-		}
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const T& src, String& dest) { dest = std::to_string(src); };
-	template<typename T>
-	void RNAImpl::TypeConversion(const String& src, T& dest) { 
+// Single to Single
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const T1& src, T2& dest) { dest = (T2)src; };
+void RNAImpl::TypeConversion(const bool& src, String& dest) { dest = (src == true ? "true" : "false"); };
+void RNAImpl::TypeConversion(const String& src, bool& dest) {
+	if (src == "true")
+		dest = true;
+	else
+	{
 		if (is_number(src))
-			dest = (T)stod(src);
+			dest = (bool)stod(src);
 		else
-			dest = (T)0.0;
-	};
-	void RNAImpl::TypeConversion(const String& src, String& dest) { dest = src; };
+			dest = false;
+	}
+};
+template<typename T>
+void RNAImpl::TypeConversion(const T& src, String& dest) { dest = std::to_string(src); };
+template<typename T>
+void RNAImpl::TypeConversion(const String& src, T& dest) {
+	if (is_number(src))
+		dest = (T)stod(src);
+	else if (src.size() > 2 && src.front()=='\"' && src.back() == '\"')
+		dest = (T)stod(src.substr(1, src.size() - 2));
+	else
+		dest = (T)0.0;
+};
+void RNAImpl::TypeConversion(const String& src, long long& dest) {
+	if (src.empty())
+		dest = 0;
+	else
+		dest = stoll(src);
+};
+void RNAImpl::TypeConversion(const String& src, unsigned long long& dest) {
+	if (src.empty())
+		dest = 0;
+	else
+		dest = stoull(src);
+};
+void RNAImpl::TypeConversion(const String& src, String& dest) { dest = src; };
 
-	// Single to Array
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const T1& src, Array<T2>& dest) { dest.push_back((T2)src); };
-	void RNAImpl::TypeConversion(const bool& src, Array<String>& dest) { dest.push_back(src == true ? "true" : "false"); };
-	template<typename T>
-	void RNAImpl::TypeConversion(const T& src, Array<String>& dest) { dest.push_back(std::to_string(src)); };
-	void RNAImpl::TypeConversion(const String& src, Array<String>& dest) 
-	{ 
-		if (src.size() > 2 && src[0] == '[' && src.back() == ']')
-		{
-			dest = split(src.substr(1, src.size() - 2), ",");
-		}
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const String& src, Array<T>& dest) {
-		Array<String> _string_array;
-		if (src.size() > 2 && src[0] == '[' && src.back() == ']')
-		{
-			_string_array = split(src.substr(1, src.size() - 2), ",");
-		}
-		TypeConversion(_string_array, dest);
-	};
+// Single to Array
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const T1& src, Array<T2>& dest) { dest.push_back((T2)src); };
+void RNAImpl::TypeConversion(const bool& src, Array<String>& dest) { dest.push_back(src == true ? "true" : "false"); };
+template<typename T>
+void RNAImpl::TypeConversion(const T& src, Array<String>& dest) { dest.push_back(std::to_string(src)); };
+void RNAImpl::TypeConversion(const String& src, Array<String>& dest)
+{
+	if (src.size() > 2 && src[0] == '[' && src.back() == ']')
+	{
+		String _src = std::regex_replace(src, std::regex("\",\""), ",");
+		if (_src.size() > 3 && _src[1] == '\"')
+			_src.erase(1, 1);
+		if (_src.size() > 3 && _src[_src.size() - 2] == '\"')
+			_src.erase(_src.size() - 2, 1);
+		dest = split(_src.substr(1, _src.size() - 2), ",");
+	}
+};
+template<typename T>
+void RNAImpl::TypeConversion(const String& src, Array<T>& dest) {
+	Array<String> _string_array;
+	if (src.size() > 2 && src[0] == '[' && src.back() == ']')
+	{
+		_string_array = split(src.substr(1, src.size() - 2), ",");
+	}
+	TypeConversion(_string_array, dest);
+};
 
-	// Single to Set
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const T1& src, Set<T2>& dest) { dest.insert((T2)src); };
-	void RNAImpl::TypeConversion(const bool& src, Set<String>& dest) { dest.insert(src == true ? "true" : "false"); };
-	template<typename T>
-	void RNAImpl::TypeConversion(const T& src, Set<String>& dest) { dest.insert(std::to_string(src)); };
-	void RNAImpl::TypeConversion(const String& src, Set<String>& dest) { 
-		Array<String> _string_array;
-		if (src.size() > 2 && src[0] == '[' && src.back() == ']')
-		{
-			_string_array = split(src.substr(1, src.size() - 2), ",");
-		}
-		TypeConversion(_string_array, dest);
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const String& src, Set<T>& dest) {
-		Array<String> _string_array;
-		if (src.size() > 2 && src[0] == '[' && src.back() == ']')
-		{
-			_string_array = split(src.substr(1, src.size() - 2), ",");
-		}
-		TypeConversion(_string_array, dest);
-	};
+// Single to Set
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const T1& src, Set<T2>& dest) { dest.insert((T2)src); };
+void RNAImpl::TypeConversion(const bool& src, Set<String>& dest) { dest.insert(src == true ? "true" : "false"); };
+template<typename T>
+void RNAImpl::TypeConversion(const T& src, Set<String>& dest) { dest.insert(std::to_string(src)); };
+void RNAImpl::TypeConversion(const String& src, Set<String>& dest) {
+	Array<String> _string_array;
+	if (src.size() > 2 && src[0] == '[' && src.back() == ']')
+	{
+		_string_array = split(src.substr(1, src.size() - 2), ",");
+	}
+	TypeConversion(_string_array, dest);
+};
+template<typename T>
+void RNAImpl::TypeConversion(const String& src, Set<T>& dest) {
+	Array<String> _string_array;
+	if (src.size() > 2 && src[0] == '[' && src.back() == ']')
+	{
+		_string_array = split(src.substr(1, src.size() - 2), ",");
+	}
+	TypeConversion(_string_array, dest);
+};
 #pragma endregion
 
 #pragma region ARRAY
-	// Array to Single
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Array<T1>& src, T2& dest) { dest = (src.size() > 0?(T2)src.front():dest);  };
-	template<typename T>
-	void RNAImpl::TypeConversion(const Array<T>& src, String& dest) { 
-		dest = "[";
-		for (auto _elem : src)
-		{
-			dest += std::to_string(_elem) + ",";
-		}
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Array<String>& src, T& dest) { 
-		if (src.size() > 1)
-			TypeConversion(src[0], dest);
-		else
-			dest = (T)0.0;
-	};
-	void RNAImpl::TypeConversion(const Array<String>& src, String& dest) {
-		dest = "[";
-		for (auto _elem : src)
-		{
-			dest += _elem + ",";
-		}
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
-	void RNAImpl::TypeConversion(const Array<bool>& src, String& dest) { 
-		dest = "[";
-		for (auto _elem : src)
-		{
-			dest += String(_elem == true ? "true" : "false") + ",";
-		}
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
+// Array to Single
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Array<T1>& src, T2& dest) { dest = (src.size() > 0 ? (T2)src.front() : dest); };
+template<typename T>
+void RNAImpl::TypeConversion(const Array<T>& src, String& dest) {
+	dest = "[";
+	for (auto _elem : src)
+	{
+		dest += std::to_string(_elem) + ",";
+	}
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Array<String>& src, T& dest) {
+	if (src.size() > 1)
+		TypeConversion(src[0], dest);
+	else
+		dest = (T)0.0;
+};
+void RNAImpl::TypeConversion(const Array<String>& src, String& dest) {
+	dest = "[";
+	for (auto _elem : src)
+	{
+		dest += _elem + ",";
+	}
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+void RNAImpl::TypeConversion(const Array<bool>& src, String& dest) {
+	dest = "[";
+	for (auto _elem : src)
+	{
+		dest += String(_elem == true ? "true" : "false") + ",";
+	}
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
 
-	// Array to Array
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Array<T1>& src, Array<T2>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T1& elem)->T2 {
-			return (T2)elem;
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Array<T>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T& elem)->String {
-			return std::to_string(elem);
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Array<String>& src, Array<T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [this](const String& elem)->T {
-			T _retval;
-			this->TypeConversion(elem, _retval);
-			return _retval;
-			});
-	};
-	void RNAImpl::TypeConversion(const Array<String>& src, Array<String>& dest) {
-		dest = src;
-	};
-	void RNAImpl::TypeConversion(const Array<bool>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const bool& elem)->String {
-			return elem == true ? "true" : "false";
-			});
-	};
+// Array to Array
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Array<T1>& src, Array<T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T1& elem)->T2 {
+		return (T2)elem;
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Array<T>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T& elem)->String {
+		return std::to_string(elem);
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Array<String>& src, Array<T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [this](const String& elem)->T {
+		T _retval;
+	this->TypeConversion(elem, _retval);
+	return _retval;
+		});
+};
+void RNAImpl::TypeConversion(const Array<String>& src, Array<String>& dest) {
+	dest = src;
+};
+void RNAImpl::TypeConversion(const Array<bool>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const bool& elem)->String {
+		return elem == true ? "true" : "false";
+		});
+};
 
-	// Array to Set
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Array<T1>& src, Set<T2>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const T1& elem)->T2 {
-			return (T2)elem;
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Array<T>& src, Set<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const T& elem)->String {
-			return std::to_string(elem);
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Array<String>& src, Set<T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const String& elem)->T {
-			T _retval;
-			this->TypeConversion(elem, _retval);
-			return _retval;
-			});
-	};
-	void RNAImpl::TypeConversion(const Array<String>& src, Set<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const String& elem)->String {
-			return elem;
-			});
-	};
+// Array to Set
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Array<T1>& src, Set<T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const T1& elem)->T2 {
+		return (T2)elem;
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Array<T>& src, Set<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const T& elem)->String {
+		return std::to_string(elem);
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Array<String>& src, Set<T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const String& elem)->T {
+		T _retval;
+	this->TypeConversion(elem, _retval);
+	return _retval;
+		});
+};
+void RNAImpl::TypeConversion(const Array<String>& src, Set<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const String& elem)->String {
+		return elem;
+		});
+};
 #pragma endregion
 
 #pragma region SET
-	// Set to Single
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Set<T1>& src, T2& dest) { 
-		if (src.size() > 0)
-			dest = (T2)*src.begin();
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Set<T>& src, String& dest) {
-		dest = "[";
-		for (auto _elem : src)
-		{
-			dest += std::to_string(_elem) + ",";
-		}
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Set<String>& src, T& dest) {
-		if (src.size() > 0)
-			TypeConversion(*src.begin(), dest);
-	};
-	void RNAImpl::TypeConversion(const Set<String>& src, String& dest) {
-		dest = "[";
-		for (auto _elem : src)
-		{
-			dest += _elem + ",";
-		}
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
-	void RNAImpl::TypeConversion(const Set<bool>& src, String& dest) { dest = (src.size() > 0 && *src.begin() == true ? "true" : "false"); };
+// Set to Single
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Set<T1>& src, T2& dest) {
+	if (src.size() > 0)
+		dest = (T2)*src.begin();
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Set<T>& src, String& dest) {
+	dest = "[";
+	for (auto _elem : src)
+	{
+		dest += std::to_string(_elem) + ",";
+	}
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Set<String>& src, T& dest) {
+	if (src.size() > 0)
+		TypeConversion(*src.begin(), dest);
+};
+void RNAImpl::TypeConversion(const Set<String>& src, String& dest) {
+	dest = "[";
+	for (auto _elem : src)
+	{
+		dest += _elem + ",";
+	}
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+void RNAImpl::TypeConversion(const Set<bool>& src, String& dest) { dest = (src.size() > 0 && *src.begin() == true ? "true" : "false"); };
 
-	// Set to Array
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Set<T1>& src, Array<T2>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T1& elem)->T2 {
-			return (T2)elem;
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Set<T>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T& elem)->String {
-			return std::to_string(elem);
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Set<String>& src, Array<T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [this](const String& elem)->T {
-			T _retval;
-			this->TypeConversion(elem, _retval);
-			return _retval;
-			});
-	};
-	void RNAImpl::TypeConversion(const Set<String>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const String& elem)->String {
-			return elem;
-			});
-	};
-	void RNAImpl::TypeConversion(const Set<bool>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const bool& elem)->String {
-			return (elem == true ? "true" : "false");
-			});
-	};
+// Set to Array
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Set<T1>& src, Array<T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T1& elem)->T2 {
+		return (T2)elem;
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Set<T>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T& elem)->String {
+		return std::to_string(elem);
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Set<String>& src, Array<T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [this](const String& elem)->T {
+		T _retval;
+	this->TypeConversion(elem, _retval);
+	return _retval;
+		});
+};
+void RNAImpl::TypeConversion(const Set<String>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const String& elem)->String {
+		return elem;
+		});
+};
+void RNAImpl::TypeConversion(const Set<bool>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const bool& elem)->String {
+		return (elem == true ? "true" : "false");
+		});
+};
 
-	// Set to Set
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Set<T1>& src, Set<T2>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const T1& elem)->T2 {
-			return (T2)elem;
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Set<T>& src, Set<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const T& elem)->String {
-			return std::to_string(elem);
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Set<String>& src, Set<T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const String& elem)->T {
-			T _retval;
-			this->TypeConversion(elem, _retval);
-			return _retval;
-			});
-	};
-	void RNAImpl::TypeConversion(const Set<String>& src, Set<String>& dest) {
-		dest = src;
-	};
-	void RNAImpl::TypeConversion(const Set<bool>& src, Set<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const bool& elem)->String {
-			return (elem==true?"true":"false");
-			});
-	};
+// Set to Set
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Set<T1>& src, Set<T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const T1& elem)->T2 {
+		return (T2)elem;
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Set<T>& src, Set<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const T& elem)->String {
+		return std::to_string(elem);
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Set<String>& src, Set<T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const String& elem)->T {
+		T _retval;
+	this->TypeConversion(elem, _retval);
+	return _retval;
+		});
+};
+void RNAImpl::TypeConversion(const Set<String>& src, Set<String>& dest) {
+	dest = src;
+};
+void RNAImpl::TypeConversion(const Set<bool>& src, Set<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const bool& elem)->String {
+		return (elem == true ? "true" : "false");
+		});
+};
 #pragma endregion
 
 #pragma region MAP
-	// XXX to Map : not supported
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const T1& src, Map<String, T2>& dest) { };
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Array<T1>& src, Map<String, T2>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const Array<String>& src, Map<String, T>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const String& src, Map<String, T>& dest) {};
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Set<T1>& src, Map<String, T2>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const Set<String>& src, Map<String, T>& dest) { };
+// XXX to Map : not supported
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const T1& src, Map<String, T2>& dest) { };
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Array<T1>& src, Map<String, T2>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const Array<String>& src, Map<String, T>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const String& src, Map<String, T>& dest) {};
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Set<T1>& src, Map<String, T2>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const Set<String>& src, Map<String, T>& dest) { };
 
-	// Map to Single
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Map<String, T1>& src, T2& dest) {
-		if (src.size() > 0)
-			dest = (T2)src.begin()->second;
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, T>& src, String& dest) {
-		dest = "[";
-		for (auto elem : src)
-			dest += "{\"key\":" + elem.first + ",\"value\":" + std::to_string(elem.second) + "},";
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, String>& src, T& dest) {
-		if (src.size() > 0)
-			TypeConversion(src.begin()->second, dest);
-	};
-	void RNAImpl::TypeConversion(const Map<String, String>& src, String& dest) {
-		dest = "[";
-		for (auto elem : src)
-			dest += "{\"key\":" + elem.first + ",\"value\":" + elem.second + "},";
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, T& dest) {
-		if (src.size() > 0)
-			dest = (T)(src.begin()->second?1:0);
-	};
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, String& dest) {
-		dest = "[";
-		for (auto elem : src)
-			dest += "{\"key\":" + elem.first + ",\"value\":" + (elem.second==true?"true":"false") + "},";
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
+// Map to Single
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Map<String, T1>& src, T2& dest) {
+	if (src.size() > 0)
+		dest = (T2)src.begin()->second;
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, T>& src, String& dest) {
+	dest = "[";
+	for (auto elem : src)
+		dest += "{\"key\":" + elem.first + ",\"value\":" + std::to_string(elem.second) + "},";
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, String>& src, T& dest) {
+	if (src.size() > 0)
+		TypeConversion(src.begin()->second, dest);
+};
+void RNAImpl::TypeConversion(const Map<String, String>& src, String& dest) {
+	dest = "[";
+	for (auto elem : src)
+		dest += "{\"key\":" + elem.first + ",\"value\":" + elem.second + "},";
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, bool>& src, T& dest) {
+	if (src.size() > 0)
+		dest = (T)(src.begin()->second ? 1 : 0);
+};
+void RNAImpl::TypeConversion(const Map<String, bool>& src, String& dest) {
+	dest = "[";
+	for (auto elem : src)
+		dest += "{\"key\":" + elem.first + ",\"value\":" + (elem.second == true ? "true" : "false") + "},";
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
 
-	// Map to Set : not supported
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Map<String, T1>& src, Set<T2>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, T>& src, Set<String>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, String>& src, Set<T>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, Set<T>& dest) { };
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, Set<String>& dest) { };
-	void RNAImpl::TypeConversion(const Map<String, String>& src, Set<String>& dest) { };
+// Map to Set : not supported
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Map<String, T1>& src, Set<T2>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, T>& src, Set<String>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, String>& src, Set<T>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, bool>& src, Set<T>& dest) { };
+void RNAImpl::TypeConversion(const Map<String, bool>& src, Set<String>& dest) { };
+void RNAImpl::TypeConversion(const Map<String, String>& src, Set<String>& dest) { };
 
-	// Map to Array
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Map<String, T1>& src, Array<T2>& dest) { 
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->T2 {
-			return (T2)elem.second;
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, T>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
-			return String("[") + elem.first + "," + std::to_string(elem.second) + "]";
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, String>& src, Array<T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [this](const auto& elem)->T {
-			T _retval;
-			this->TypeConversion(elem.second, _retval);
-			return _retval;
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, Array<T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->T {
-			return (T)(elem.second?1:0);
-			});
-	};
-	void RNAImpl::TypeConversion(const Map<String, String>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
-			return String("[") + elem.first + "," + elem.second + "]";
-			});
-	};
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
-			return String("[") + elem.first + "," + (elem.second == true ? "true" : "false") + "]";
-			});
-	};
-
-	// Map to Map
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Map<String, T1>& src, Map<String, T2>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T1>& elem)->Pair<String, T2> {
-			return { elem.first, (T2)elem.second };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, String>& src, Map<String, T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const Pair<String, String>& elem)->Pair<String, T> {
-			T _retval;
-			this->TypeConversion(elem.second, _retval);
-			return { elem.first, _retval };
+// Map to Array
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Map<String, T1>& src, Array<T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->T2 {
+		return (T2)elem.second;
 		});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, T>& src, Map<String, String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T>& elem)->Pair<String, String> {
-			return { elem.first, std::to_string(elem.second) };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, Map<String, T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String,bool>& elem)->Pair<String, T> {
-			return { elem.first, (T)(elem.second?1:0) };
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, T>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
+		return String("[") + elem.first + "," + std::to_string(elem.second) + "]";
 		});
-	};
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, Map<String, String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, String> {
-			return { elem.first, (elem.second ? "true" : "false") };
-			});
-	};
-	void RNAImpl::TypeConversion(const Map<String, String>& src, Map<String, String>& dest) {
-		dest = src;
-	};
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, String>& src, Array<T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [this](const auto& elem)->T {
+		T _retval;
+	this->TypeConversion(elem.second, _retval);
+	return _retval;
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, bool>& src, Array<T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->T {
+		return (T)(elem.second ? 1 : 0);
+		});
+};
+void RNAImpl::TypeConversion(const Map<String, String>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
+		return String("[") + elem.first + "," + elem.second + "]";
+		});
+};
+void RNAImpl::TypeConversion(const Map<String, bool>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
+		return String("[") + elem.first + "," + (elem.second == true ? "true" : "false") + "]";
+		});
+};
 
-	// Map to UoMap
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Map<String, T1>& src, UoMap<String, T2>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T1>& elem)->Pair<String, T2> {
-			return { elem.first, (T2)elem.second };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, String>& src, UoMap<String, T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const Pair<String, String>& elem)->Pair<String, T> {
-			T _retval;
-			this->TypeConversion(elem.second, _retval);
-			return { elem.first, _retval };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, T>& src, UoMap<String, String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T>& elem)->Pair<String, String> {
-			return { elem.first, std::to_string(elem.second) };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, UoMap<String, T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, T> {
-			return { elem.first, (T)(elem.second ? 1 : 0) };
-			});
-	};
-	void RNAImpl::TypeConversion(const Map<String, bool>& src, UoMap<String, String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, String> {
-			return { elem.first, (elem.second ? "true" : "false") };
-			});
-	};
-	void RNAImpl::TypeConversion(const Map<String, String>& src, UoMap<String, String>& dest) {
-		dest = UoMap<String, String>(src.begin(), src.end());
-	};
+// Map to Map
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Map<String, T1>& src, Map<String, T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T1>& elem)->Pair<String, T2> {
+		return { elem.first, (T2)elem.second };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, String>& src, Map<String, T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const Pair<String, String>& elem)->Pair<String, T> {
+		T _retval;
+	this->TypeConversion(elem.second, _retval);
+	return { elem.first, _retval };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, T>& src, Map<String, String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T>& elem)->Pair<String, String> {
+		return { elem.first, std::to_string(elem.second) };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, bool>& src, Map<String, T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, T> {
+		return { elem.first, (T)(elem.second ? 1 : 0) };
+		});
+};
+void RNAImpl::TypeConversion(const Map<String, bool>& src, Map<String, String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, String> {
+		return { elem.first, (elem.second ? "true" : "false") };
+		});
+};
+void RNAImpl::TypeConversion(const Map<String, String>& src, Map<String, String>& dest) {
+	dest = src;
+};
+
+// Map to UoMap
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Map<String, T1>& src, UoMap<String, T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T1>& elem)->Pair<String, T2> {
+		return { elem.first, (T2)elem.second };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, String>& src, UoMap<String, T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const Pair<String, String>& elem)->Pair<String, T> {
+		T _retval;
+	this->TypeConversion(elem.second, _retval);
+	return { elem.first, _retval };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, T>& src, UoMap<String, String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T>& elem)->Pair<String, String> {
+		return { elem.first, std::to_string(elem.second) };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const Map<String, bool>& src, UoMap<String, T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, T> {
+		return { elem.first, (T)(elem.second ? 1 : 0) };
+		});
+};
+void RNAImpl::TypeConversion(const Map<String, bool>& src, UoMap<String, String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, String> {
+		return { elem.first, (elem.second ? "true" : "false") };
+		});
+};
+void RNAImpl::TypeConversion(const Map<String, String>& src, UoMap<String, String>& dest) {
+	dest = UoMap<String, String>(src.begin(), src.end());
+};
 #pragma endregion
 
 #pragma region UNORDERED_MAP
-	// XXX to UoMap : not supported
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const T1& src, UoMap<String, T2>& dest) { };
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Array<T1>& src, UoMap<String, T2>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const Array<String>& src, UoMap<String, T>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const String& src, UoMap<String, T>& dest) {};
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const Set<T1>& src, UoMap<String, T2>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const Set<String>& src, UoMap<String, T>& dest) { };
+// XXX to UoMap : not supported
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const T1& src, UoMap<String, T2>& dest) { };
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Array<T1>& src, UoMap<String, T2>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const Array<String>& src, UoMap<String, T>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const String& src, UoMap<String, T>& dest) {};
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const Set<T1>& src, UoMap<String, T2>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const Set<String>& src, UoMap<String, T>& dest) { };
 
-	// UoMap to Single
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const UoMap<String, T1>& src, T2& dest) {
-		if (src.size() > 0)
-			dest = (T2)src.begin()->second;
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, T>& src, String& dest) {
-		dest = "[";
-		for (auto elem : src)
-			dest += "{\"key\":" + elem.first + ",\"value\":" + std::to_string(elem.second) + "},";
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, T& dest) {
-		if (src.size() > 0)
-		{
-			T _retval;
-			TypeConversion(src.begin()->second, _retval);
-			dest = _retval;
-		}
-	};
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, String& dest) {
-		dest = "[";
-		for (auto elem : src)
-			dest += "{\"key\":" + elem.first + ",\"value\":" + elem.second + "},";
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, T& dest) {
-		if (src.size() > 0)
-			dest = (T)(src.begin()->second ? 1 : 0);
-	};
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, String& dest) {
-		dest = "[";
-		for (auto elem : src)
-			dest += "{\"key\":" + elem.first + ",\"value\":" + (elem.second ? "true" : "false") + "},";
-		if (dest.size() > 1)
-			dest.back() = ']';
-		else
-			dest.push_back(']');
-	};
+// UoMap to Single
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const UoMap<String, T1>& src, T2& dest) {
+	if (src.size() > 0)
+		dest = (T2)src.begin()->second;
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, T>& src, String& dest) {
+	dest = "[";
+	for (auto elem : src)
+		dest += "{\"key\":" + elem.first + ",\"value\":" + std::to_string(elem.second) + "},";
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, T& dest) {
+	if (src.size() > 0)
+	{
+		T _retval;
+		TypeConversion(src.begin()->second, _retval);
+		dest = _retval;
+	}
+};
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, String& dest) {
+	dest = "[";
+	for (auto elem : src)
+		dest += "{\"key\":" + elem.first + ",\"value\":" + elem.second + "},";
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, T& dest) {
+	if (src.size() > 0)
+		dest = (T)(src.begin()->second ? 1 : 0);
+};
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, String& dest) {
+	dest = "[";
+	for (auto elem : src)
+		dest += "{\"key\":" + elem.first + ",\"value\":" + (elem.second ? "true" : "false") + "},";
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
 
-	// UoMap to Set : not supported
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const UoMap<String, T1>& src, Set<T2>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, T>& src, Set<String>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, Set<T>& dest) { };
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Set<T>& dest) { };
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Set<String>& dest) { };
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, Set<String>& dest) { };
+// UoMap to Set : not supported
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const UoMap<String, T1>& src, Set<T2>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, T>& src, Set<String>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, Set<T>& dest) { };
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Set<T>& dest) { };
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Set<String>& dest) { };
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, Set<String>& dest) { };
 
-	// UoMap to Array
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const UoMap<String, T1>& src, Array<T2>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->T2 {
-			return (T2)elem.second;
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, T>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
-			return String("[") + elem.first + "," + std::to_string(elem.second) + "]";
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, Array<T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [this](const auto& elem)->T {
-			T _retval;
-			this->TypeConversion(elem.second, _retval);
-			return _retval;
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Array<T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->T {
-			return (T)(elem.second ? 1 : 0);
-			});
-	};
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
-			return String("[") + elem.first + "," + elem.second + "]";
-			});
-	};
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Array<String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
-			return String("[") + elem.first + "," + (elem.second == true ? "true" : "false") + "]";
-			});
-	};
+// UoMap to Array
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const UoMap<String, T1>& src, Array<T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->T2 {
+		return (T2)elem.second;
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, T>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
+		return String("[") + elem.first + "," + std::to_string(elem.second) + "]";
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, Array<T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [this](const auto& elem)->T {
+		T _retval;
+	this->TypeConversion(elem.second, _retval);
+	return _retval;
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Array<T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->T {
+		return (T)(elem.second ? 1 : 0);
+		});
+};
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
+		return String("[") + elem.first + "," + elem.second + "]";
+		});
+};
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const auto& elem)->String {
+		return String("[") + elem.first + "," + (elem.second == true ? "true" : "false") + "]";
+		});
+};
 
-	// UoMap to UoMap
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const UoMap<String, T1>& src, UoMap<String, T2>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [](const Pair<String, T1>& elem)->Pair<String, T2> {
-			return { elem.first, (T2)elem.second };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, UoMap<String, T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [this](const Pair<String, String>& elem)->Pair<String, T> {
-			T _retval;
-			this->TypeConversion(elem.second, _retval);
-			return { elem.first, _retval };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, T>& src, UoMap<String, String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [](const Pair<String, T>& elem)->Pair<String, String> {
-			return { elem.first, std::to_string(elem.second) };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, UoMap<String, T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [](const Pair<String, bool>& elem)->Pair<String, T> {
-			return { elem.first, (T)(elem.second ? 1 : 0) };
-			});
-	};
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, UoMap<String, String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [](const Pair<String, bool>& elem)->Pair<String, String> {
-			return { elem.first, (elem.second ? "true" : "false") };
-			});
-	};
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, UoMap<String, String>& dest) {
-		dest = src;
-	};
+// UoMap to UoMap
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const UoMap<String, T1>& src, UoMap<String, T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [](const Pair<String, T1>& elem)->Pair<String, T2> {
+		return { elem.first, (T2)elem.second };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, UoMap<String, T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [this](const Pair<String, String>& elem)->Pair<String, T> {
+		T _retval;
+	this->TypeConversion(elem.second, _retval);
+	return { elem.first, _retval };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, T>& src, UoMap<String, String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [](const Pair<String, T>& elem)->Pair<String, String> {
+		return { elem.first, std::to_string(elem.second) };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, UoMap<String, T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [](const Pair<String, bool>& elem)->Pair<String, T> {
+		return { elem.first, (T)(elem.second ? 1 : 0) };
+		});
+};
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, UoMap<String, String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.end()), [](const Pair<String, bool>& elem)->Pair<String, String> {
+		return { elem.first, (elem.second ? "true" : "false") };
+		});
+};
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, UoMap<String, String>& dest) {
+	dest = src;
+};
 
-	// UoMap to Map
-	template<typename T1, typename T2>
-	void RNAImpl::TypeConversion(const UoMap<String, T1>& src, Map<String, T2>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T1>& elem)->Pair<String, T2> {
-			return { elem.first, (T2)elem.second };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, Map<String, T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const Pair<String, String>& elem)->Pair<String, T> {
-			T _retval;
-			this->TypeConversion(elem.second, _retval);
-			return { elem.first, _retval };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, T>& src, Map<String, String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T>& elem)->Pair<String, String> {
-			return { elem.first, std::to_string(elem.second) };
-			});
-	};
-	template<typename T>
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Map<String, T>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, T> {
-			return { elem.first, (T)(elem.second ? 1 : 0) };
-			});
-	};
-	void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Map<String, String>& dest) {
-		std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, String> {
-			return { elem.first, (elem.second ? "true" : "false") };
-			});
-	};
-	void RNAImpl::TypeConversion(const UoMap<String, String>& src, Map<String, String>& dest) {
-		dest = Map<String,String>(src.begin(), src.end());
-	};
+// UoMap to Map
+template<typename T1, typename T2>
+void RNAImpl::TypeConversion(const UoMap<String, T1>& src, Map<String, T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T1>& elem)->Pair<String, T2> {
+		return { elem.first, (T2)elem.second };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, Map<String, T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [this](const Pair<String, String>& elem)->Pair<String, T> {
+		T _retval;
+	this->TypeConversion(elem.second, _retval);
+	return { elem.first, _retval };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, T>& src, Map<String, String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, T>& elem)->Pair<String, String> {
+		return { elem.first, std::to_string(elem.second) };
+		});
+};
+template<typename T>
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Map<String, T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, T> {
+		return { elem.first, (T)(elem.second ? 1 : 0) };
+		});
+};
+void RNAImpl::TypeConversion(const UoMap<String, bool>& src, Map<String, String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::inserter(dest, dest.begin()), [](const Pair<String, bool>& elem)->Pair<String, String> {
+		return { elem.first, (elem.second ? "true" : "false") };
+		});
+};
+void RNAImpl::TypeConversion(const UoMap<String, String>& src, Map<String, String>& dest) {
+	dest = Map<String, String>(src.begin(), src.end());
+};
 #pragma endregion
 
 template<typename T>
@@ -780,6 +806,12 @@ void RNAImpl::TRead(const String& name, T& value)
 	else
 		_name = name;
 	model()->Read(_name, _stored_type, _buf);
+#ifdef __linux__
+	if (_stored_type == "l")
+		_stored_type = "x";
+	else if (_stored_type == "m")
+		_stored_type = "y";
+#endif
 	try {
 		Deserialize(_stored_type.data(), _buf, value);
 	}
@@ -802,7 +834,7 @@ void RNAImpl::TWrite(const String& name, const T& value, bool internal_use)
 	ByteArray data;
 	zpp::serializer::memory_output_archive out(data);
 	out(value);
-	model()->Write(name, GetType(value), data, internal_use);
+	model()->Write(name, GetType(value), (DynaArray)data, internal_use);
 }
 
 
@@ -817,7 +849,7 @@ void RNAImpl::Write(const String& name, const bool& value, bool internal_use)
 	zpp::serializer::memory_output_archive out(data);
 	int8_t _value = (value == true ? 1 : 0);
 	out(_value);
-	model()->Write(name, GetType(value), data, internal_use);
+	model()->Write(name, GetType(value), (DynaArray)data, internal_use);
 }
 
 void RNAImpl::Write(const String& name, const char* value, bool internal_use)
@@ -839,7 +871,7 @@ void RNAImpl::Write(const String& name, const Array<bool>& value, bool internal_
 		return elem == true ? 1 : 0;
 		});
 	out(_value);
-	model()->Write(name, GetType(value), data, internal_use);
+	model()->Write(name, GetType(value), (DynaArray)data, internal_use);
 }
 
 void RNAImpl::Read(const String& name, Set<bool>& value)
@@ -856,7 +888,7 @@ void RNAImpl::Write(const String& name, const Set<bool>& value, bool internal_us
 		return elem == true ? 1 : 0;
 		});
 	out(_value);
-	model()->Write(name, GetType(value), data, internal_use);
+	model()->Write(name, GetType(value), (DynaArray)data, internal_use);
 }
 
 void RNAImpl::Read(const String& name, Map<String, bool>& value)
@@ -871,9 +903,9 @@ void RNAImpl::Write(const String& name, const Map<String, bool>& value, bool int
 	Map<String, int8_t> _value;
 	std::transform(value.cbegin(), value.cend(), std::inserter(_value, _value.begin()), [](const Pair<String, bool>& elem)->auto {
 		return std::make_pair(elem.first, (elem.second == true ? 1 : 0));
-	});
+		});
 	out(_value);
-	model()->Write(name, GetType(value), data, internal_use);
+	model()->Write(name, GetType(value), (DynaArray)data, internal_use);
 }
 
 void RNAImpl::Read(const String& name, UoMap<String, bool>& value)
@@ -888,9 +920,20 @@ void RNAImpl::Write(const String& name, const UoMap<String, bool>& value, bool i
 	UoMap<String, int8_t> _value;
 	std::transform(value.cbegin(), value.cend(), std::inserter(_value, _value.begin()), [](const Pair<String, bool>& elem)->auto {
 		return std::make_pair(elem.first, (elem.second == true ? 1 : 0));
-	});
+		});
 	out(_value);
-	model()->Write(name, GetType(value), data, internal_use);
+	model()->Write(name, GetType(value), (DynaArray)data, internal_use);
+}
+
+void RNAImpl::Read(const String& name, nlohmann::json& value)
+{
+	DynaArray _stored_type;
+	model()->Read((DynaArray)name, _stored_type, value);
+}
+
+void RNAImpl::Write(const String& name, const nlohmann::json& value, bool internal_use)
+{
+	model()->Write(name, GetType(value), value, internal_use);
 }
 
 template <typename T>
@@ -912,6 +955,8 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, T& value)
 		}
 		else
 		{
+			typedef long long longlong;
+			typedef unsigned long long ulonglong;
 			switch (type_hash_table_[_type_hash])
 			{
 			case type_int32_t:
@@ -920,11 +965,11 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, T& value)
 			case type_uint32_t:
 				Deserialize(uint32_t(), data, value);
 				break;
-			case type_int64_t:
-				Deserialize(int64_t(), data, value);
+			case type_longlong_t:
+				Deserialize(longlong(), data, value);
 				break;
-			case type_uint64_t:
-				Deserialize(uint64_t(), data, value);
+			case type_ulonglong_t:
+				Deserialize(ulonglong(), data, value);
 				break;
 			case type_double:
 				Deserialize(double(), data, value);
@@ -942,11 +987,11 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, T& value)
 			case type_uint32_t_array:
 				Deserialize(Array<uint32_t>(), data, value);
 				break;
-			case type_int64_t_array:
-				Deserialize(Array<int64_t>(), data, value);
+			case type_longlong_t_array:
+				Deserialize(Array<longlong>(), data, value);
 				break;
-			case type_uint64_t_array:
-				Deserialize(Array<uint64_t>(), data, value);
+			case type_ulonglong_t_array:
+				Deserialize(Array<ulonglong>(), data, value);
 				break;
 			case type_double_array:
 				Deserialize(Array<double>(), data, value);
@@ -964,17 +1009,21 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, T& value)
 			case type_uint32_t_set:
 				Deserialize(Set<uint32_t>(), data, value);
 				break;
-			case type_int64_t_set:
-				Deserialize(Set<int64_t>(), data, value);
+			case type_longlong_t_set:
+				Deserialize(Set<longlong>(), data, value);
 				break;
-			case type_uint64_t_set:
-				Deserialize(Set<uint64_t>(), data, value);
+			case type_ulonglong_t_set:
+				Deserialize(Set<ulonglong>(), data, value);
 				break;
 			case type_double_set:
 				Deserialize(Set<double>(), data, value);
 				break;
 			case type_string_set:
 				Deserialize(Set<String>(), data, value);
+				break;
+
+			case type_json:
+				Deserialize(nlohmann::json(), data, value);
 				break;
 
 			case type_bool_map:
@@ -986,11 +1035,11 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, T& value)
 			case type_uint32_t_map:
 				Deserialize(Map<String, uint32_t>(), data, value);
 				break;
-			case type_int64_t_map:
-				Deserialize(Map<String, int64_t>(), data, value);
+			case type_longlong_t_map:
+				Deserialize(Map<String, longlong>(), data, value);
 				break;
-			case type_uint64_t_map:
-				Deserialize(Map<String, uint64_t>(), data, value);
+			case type_ulonglong_t_map:
+				Deserialize(Map<String, ulonglong>(), data, value);
 				break;
 			case type_double_map:
 				Deserialize(Map<String, double>(), data, value);
@@ -1008,11 +1057,11 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, T& value)
 			case type_uint32_t_uomap:
 				Deserialize(UoMap<String, uint32_t>(), data, value);
 				break;
-			case type_int64_t_uomap:
-				Deserialize(UoMap<String, int64_t>(), data, value);
+			case type_longlong_t_uomap:
+				Deserialize(UoMap<String, longlong>(), data, value);
 				break;
-			case type_uint64_t_uomap:
-				Deserialize(UoMap<String, uint64_t>(), data, value);
+			case type_ulonglong_t_uomap:
+				Deserialize(UoMap<String, ulonglong>(), data, value);
 				break;
 			case type_double_uomap:
 				Deserialize(UoMap<String, double>(), data, value);
@@ -1045,6 +1094,8 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, Array<bool>& 
 	}
 	else
 	{
+		typedef long long longlong;
+		typedef unsigned long long ulonglong;
 		switch (type_hash_table_[_type_hash])
 		{
 		case type_int32_t:
@@ -1053,11 +1104,11 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, Array<bool>& 
 		case type_uint32_t:
 			Deserialize(uint32_t(), data, value);
 			break;
-		case type_int64_t:
-			Deserialize(int64_t(), data, value);
+		case type_longlong_t:
+			Deserialize(longlong(), data, value);
 			break;
-		case type_uint64_t:
-			Deserialize(uint64_t(), data, value);
+		case type_ulonglong_t:
+			Deserialize(ulonglong(), data, value);
 			break;
 		case type_double:
 			Deserialize(double(), data, value);
@@ -1075,11 +1126,11 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, Array<bool>& 
 		case type_uint32_t_array:
 			Deserialize(Array<uint32_t>(), data, value);
 			break;
-		case type_int64_t_array:
-			Deserialize(Array<int64_t>(), data, value);
+		case type_longlong_t_array:
+			Deserialize(Array<longlong>(), data, value);
 			break;
-		case type_uint64_t_array:
-			Deserialize(Array<uint64_t>(), data, value);
+		case type_ulonglong_t_array:
+			Deserialize(Array<ulonglong>(), data, value);
 			break;
 		case type_double_array:
 			Deserialize(Array<double>(), data, value);
@@ -1097,17 +1148,21 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, Array<bool>& 
 		case type_uint32_t_set:
 			Deserialize(Set<uint32_t>(), data, value);
 			break;
-		case type_int64_t_set:
-			Deserialize(Set<int64_t>(), data, value);
+		case type_longlong_t_set:
+			Deserialize(Set<longlong>(), data, value);
 			break;
-		case type_uint64_t_set:
-			Deserialize(Set<uint64_t>(), data, value);
+		case type_ulonglong_t_set:
+			Deserialize(Set<ulonglong>(), data, value);
 			break;
 		case type_double_set:
 			Deserialize(Set<double>(), data, value);
 			break;
 		case type_string_set:
 			Deserialize(Set<String>(), data, value);
+			break;
+
+		case type_json:
+			Deserialize(nlohmann::json(), data, value);
 			break;
 
 		case type_bool_map:
@@ -1119,11 +1174,11 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, Array<bool>& 
 		case type_uint32_t_map:
 			Deserialize(Map<String, uint32_t>(), data, value);
 			break;
-		case type_int64_t_map:
-			Deserialize(Map<String, int64_t>(), data, value);
+		case type_longlong_t_map:
+			Deserialize(Map<String, longlong>(), data, value);
 			break;
-		case type_uint64_t_map:
-			Deserialize(Map<String, uint64_t>(), data, value);
+		case type_ulonglong_t_map:
+			Deserialize(Map<String, ulonglong>(), data, value);
 			break;
 		case type_double_map:
 			Deserialize(Map<String, double>(), data, value);
@@ -1141,11 +1196,11 @@ void RNAImpl::Deserialize(const char* type, const DynaArray& data, Array<bool>& 
 		case type_uint32_t_uomap:
 			Deserialize(UoMap<String, uint32_t>(), data, value);
 			break;
-		case type_int64_t_uomap:
-			Deserialize(UoMap<String, int64_t>(), data, value);
+		case type_longlong_t_uomap:
+			Deserialize(UoMap<String, longlong>(), data, value);
 			break;
-		case type_uint64_t_uomap:
-			Deserialize(UoMap<String, uint64_t>(), data, value);
+		case type_ulonglong_t_uomap:
+			Deserialize(UoMap<String, ulonglong>(), data, value);
 			break;
 		case type_double_uomap:
 			Deserialize(UoMap<String, double>(), data, value);
@@ -1200,6 +1255,16 @@ void RNAImpl::Deserialize(Array<bool>, const DynaArray& data, T2& value)
 	TypeConversion(_value, value);
 }
 
+template <typename T2>
+void RNAImpl::Deserialize(nlohmann::json, const DynaArray& data, T2& value)
+{
+	if (data.size() != 0)
+	{
+		String _value = data.str();
+		TypeConversion(_value, value);
+	}
+}
+
 void RNAImpl::BuildTypeHastable()
 {
 	type_hash_table_ =
@@ -1207,40 +1272,42 @@ void RNAImpl::BuildTypeHastable()
 		{ hash((String)typeid(bool).name()), type_bool },
 		{ hash((String)typeid(int32_t).name()), type_int32_t },
 		{ hash((String)typeid(uint32_t).name()), type_uint32_t},
-		{ hash((String)typeid(int64_t).name()), type_int64_t },
-		{ hash((String)typeid(uint64_t).name()), type_uint64_t },
+		{ hash((String)typeid(long long).name()), type_longlong_t },
+		{ hash((String)typeid(unsigned long long).name()), type_ulonglong_t },
 		{ hash((String)typeid(double).name()), type_double },
 		{ hash((String)typeid(String).name()), type_string },
 
 		{ hash((String)typeid(Array<bool>).name()), type_bool_array },
 		{ hash((String)typeid(Array<int32_t>).name()), type_int32_t_array },
 		{ hash((String)typeid(Array<uint32_t>).name()), type_uint32_t_array },
-		{ hash((String)typeid(Array<int64_t>).name()), type_int64_t_array },
-		{ hash((String)typeid(Array<uint64_t>).name()), type_uint64_t_array },
+		{ hash((String)typeid(Array<long long>).name()), type_longlong_t_array },
+		{ hash((String)typeid(Array<unsigned long long>).name()), type_ulonglong_t_array },
 		{ hash((String)typeid(Array<double>).name()), type_double_array },
 		{ hash((String)typeid(Array<String>).name()), type_string_array },
 
 		{ hash((String)typeid(Set<bool>).name()), type_bool_set },
 		{ hash((String)typeid(Set<int32_t>).name()), type_int32_t_set },
 		{ hash((String)typeid(Set<uint32_t>).name()), type_uint32_t_set },
-		{ hash((String)typeid(Set<int64_t>).name()), type_int64_t_set },
-		{ hash((String)typeid(Set<uint64_t>).name()), type_uint64_t_set },
+		{ hash((String)typeid(Set<long long>).name()), type_longlong_t_set },
+		{ hash((String)typeid(Set<unsigned long long>).name()), type_ulonglong_t_set },
 		{ hash((String)typeid(Set<double>).name()), type_double_set },
 		{ hash((String)typeid(Set<String>).name()), type_string_set },
+
+		{ hash((String)typeid(nlohmann::json).name()), type_json },
 
 		{ hash((String)typeid(Map<String, bool>).name()), type_bool_map },
 		{ hash((String)typeid(Map<String, int32_t>).name()), type_int32_t_map },
 		{ hash((String)typeid(Map<String, uint32_t>).name()), type_uint32_t_map },
-		{ hash((String)typeid(Map<String, int64_t>).name()), type_int64_t_map },
-		{ hash((String)typeid(Map<String, uint64_t>).name()), type_uint64_t_map },
+		{ hash((String)typeid(Map<String, long long>).name()), type_longlong_t_map },
+		{ hash((String)typeid(Map<String, unsigned long long>).name()), type_ulonglong_t_map },
 		{ hash((String)typeid(Map<String, double>).name()), type_double_map },
 		{ hash((String)typeid(Map<String, String>).name()), type_string_map },
 
 		{ hash((String)typeid(UoMap<String, bool>).name()), type_bool_uomap },
 		{ hash((String)typeid(UoMap<String, int32_t>).name()), type_int32_t_uomap },
 		{ hash((String)typeid(UoMap<String, uint32_t>).name()), type_uint32_t_uomap },
-		{ hash((String)typeid(UoMap<String, int64_t>).name()), type_int64_t_uomap },
-		{ hash((String)typeid(UoMap<String, uint64_t>).name()), type_uint64_t_uomap },
+		{ hash((String)typeid(UoMap<String, long long>).name()), type_longlong_t_uomap },
+		{ hash((String)typeid(UoMap<String, unsigned long long>).name()), type_ulonglong_t_uomap },
 		{ hash((String)typeid(UoMap<String, double>).name()), type_double_uomap },
 		{ hash((String)typeid(UoMap<String, String>).name()), type_string_uomap },
 	};

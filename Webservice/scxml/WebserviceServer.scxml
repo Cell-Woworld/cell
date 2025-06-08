@@ -27,7 +27,10 @@
             <onentry>
                 <script>Webservice.Start</script>
             </onentry>
-        </state>
+			<transition type="internal" event="Webservice.PerformResponse">
+				<script>Webservice.PerformResponse</script>
+			</transition>
+		</state>
     </state>
     <final id="Final_1">
         <qt:editorinfo geometry="167.76;463.07;-20;-20;40;40" scenegeometry="167.76;463.07;147.76;443.07;40;40"/>

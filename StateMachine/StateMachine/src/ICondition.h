@@ -21,14 +21,10 @@ public:
     virtual ~ICondition() {};
     char* name() { return (char*)name_.data(); };
 
-protected:
+public:
     virtual bool eval(const ParamPairList& params) = 0;
 
 private:
     std::string name_;
-
-#pragma region friend
-    friend class CState;
-#pragma endregion friend
 };
 

@@ -5,6 +5,39 @@ namespace BioSys {
 	class DNA;
 };
 
+enum ENUM_TAG
+{
+	RAISE = 0,
+	SEND,
+	SCRIPT,
+	ASSIGN,
+	LOG,
+	IF,
+	ELSEIF,
+	ELSE,
+	FOREACH,
+	NEXT,
+	INVOKE,
+	UNINVOKE,
+	FINAL_STATE,
+
+	STATE,
+	HISTORY,
+	SHALLOW_HISTORY,
+	DEEP_HISTORY,
+	PARALLEL,
+
+	ON_ENTRY,
+	ON_EXIT,
+
+	PARAM,
+
+	TRANSITION,
+
+	DATA_MODEL,
+	DATA,
+};
+
 class IStateMachine
 {
 public:
@@ -17,7 +50,7 @@ public:
 public:
 	IStateMachine();
 	virtual ~IStateMachine();
-	virtual bool Load(const char* szLogicMapFilename, BioSys::DNA* callback);
+	virtual bool Load(const char* szLogicMap, BioSys::DNA* callback, bool isFile = true);
 	virtual int EventFired(const char* szEventID);
 	virtual void GetActiveStates(const char* lstActiveState[], const int iMaxListSize);
 	virtual void SetActiveStates(const char* lstActiveState[], const int iMaxListSize);

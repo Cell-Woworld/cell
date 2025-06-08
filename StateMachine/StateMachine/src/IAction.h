@@ -27,7 +27,7 @@ public:
 	char* name() { return (char*)name_.data(); };
 	int type() { return type_; };
 
-protected:
+public:
     virtual void execute(const ParamPairList& params) = 0;
 
 private:

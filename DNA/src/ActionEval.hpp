@@ -2,11 +2,35 @@
 #include "internal/DNA.h"
 #include "exprtk.hpp"
 #include <math.h>
+/*
+template <typename T>
+struct string_format : public exprtk::igeneric_function<T>
+{
+	typedef exprtk::igeneric_function<T> igenfunct_t;
+	typedef typename igenfunct_t::generic_type generic_t;
+	typedef typename igenfunct_t::parameter_list_t parameter_list_t;
+	typedef typename generic_t::string_view string_t;
 
-#define TAG "ActionEval"
+	string_format()
+		: exprtk::igeneric_function<T>("S?*", igenfunct_t::e_rtrn_string)
+	{}
 
+	inline T operator()(std::string& result,
+		parameter_list_t parameters)
+	{
+		result.clear();
+
+		string_t string(parameters[0]);
+		int _size = sprintf((char*)result.data(), string.begin(), parameters[1]);
+		result.assign(_size + 1, 0);
+		_size = sprintf((char*)result.data(), string.begin(), parameters[1]);
+		return T(0);
+	}
+};
+*/
 class ActionEval
 {
+	static const char TAG[];
 public:
 	ActionEval(BioSys::DNA* owner)
 		: owner_(owner)
@@ -61,6 +85,8 @@ private:
 private:
 	BioSys::DNA* owner_;
 };
+
+const char ActionEval::TAG[] = "ActionEval";
 
 ActionEval::T_TokenType ActionEval::_getToken(const String& cstrSentence, String& strToken, int& nParamPos)
 {
@@ -364,12 +390,14 @@ bool ActionEval::Calculate(const String& expression_string, T& result, bool& is_
 {
 	exprtk::symbol_table<T> symbol_table;
 	symbol_table.add_constants();
+	//string_format<T> stringFormat;
+	//symbol_table.add_function("string_format", stringFormat);
 	exprtk::expression<T> expression;
 	expression.register_symbol_table(symbol_table);
 
-	{
-		exprtk::parser<T> parser;
-
+	exprtk::parser<T> parser;
+	try {
+		
 		if (!parser.compile(expression_string, expression))
 		{
 			LOG_T(TAG, "Calculate() - %s   Expression: %s",
@@ -379,6 +407,13 @@ bool ActionEval::Calculate(const String& expression_string, T& result, bool& is_
 			return false;
 		}
 	}
+	catch (const std::exception&) {
+		LOG_E(TAG, "Calculate() - %s   Expression: %s",
+			parser.error().c_str(),
+			expression_string.c_str());
+
+		return false;
+	}
 
 	if (!exprtk::expression_helper<T>::is_constant(expression))
 	{
@@ -387,12 +422,22 @@ bool ActionEval::Calculate(const String& expression_string, T& result, bool& is_
 
 		return false;
 	}
-
-	result = expression.value();
-	int _decimal_count = 0;
-	owner_->Read("Bio.Cell.Model.NumberWithDecimalCount", _decimal_count);
-	is_integer = (_decimal_count <= 0);
-	return true;
+	if (expression_string.front() == '[' && expression_string.back() == ']')
+	{
+		return false;
+	}
+	else if (expression_string == "true" || expression_string == "false")
+	{
+		return false;
+	}
+	else
+	{
+		result = expression.value();
+		int _decimal_count = 0;
+		owner_->Read("Bio.Cell.Model.NumberWithDecimalCount", _decimal_count);
+		is_integer = (_decimal_count <= 0);
+		return true;
+	}
 }
 /*
 bool ActionEval::Calculate(const String& szParam, double& dResult, bool& is_integer)
@@ -647,7 +692,7 @@ void ActionEval::Eval(const String& param)
 				}
 				assert(strOperand != "");
 				if (_is_integer == true)
-					Collect(strOperand, enumOperator, (int)round(dTargetOperand));
+					Collect(strOperand, enumOperator, (long long)round(dTargetOperand));
 				else
 					Collect(strOperand, enumOperator, dTargetOperand);
 			}
@@ -687,7 +732,7 @@ void ActionEval::Eval(const String& param)
 					}
 					assert(strOperand != "");
 					if (_is_integer == true)
-						Collect(strOperand, enumOperator, (int)round(dTargetOperand));
+						Collect(strOperand, enumOperator, (long long)round(dTargetOperand));
 					else
 						Collect(strOperand, enumOperator, dTargetOperand);
 				}
@@ -757,7 +802,7 @@ void ActionEval::Eval(const String& param, const String& target_model_name)
 	if (Calculate(param, dTargetOperand, _is_integer) == true)
 	{
 		if (_is_integer == true)
-			owner_->Write(target_model_name, (int)round(dTargetOperand));
+			owner_->Write(target_model_name, (long long)round(dTargetOperand));
 		else
 		{
 			int _decimal_count = 0;

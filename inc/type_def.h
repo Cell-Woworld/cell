@@ -69,10 +69,10 @@
 #define LOG_T(TAG,...) {}
 #define LOG_D(TAG,...) {}
 #endif
-#define LOG_I(TAG,...) {time_t t;time(&t);printf("%s %#x>>> INFO:<%s> ", ctime(&t), (unsigned int)std::hash<std::thread::id>{}(std::this_thread::get_id()), TAG);printf(__VA_ARGS__); printf("\n");}
-#define LOG_W(TAG,...) {time_t t;time(&t);printf("%s %#x>>> WARN:<%s> ", ctime(&t), (unsigned int)std::hash<std::thread::id>{}(std::this_thread::get_id()), TAG);printf(__VA_ARGS__); printf("\n");}
-#define LOG_E(TAG,...) {time_t t;time(&t);printf("%s %#x>>> ERROR:<%s> ", ctime(&t), (unsigned int)std::hash<std::thread::id>{}(std::this_thread::get_id()), TAG);printf(__VA_ARGS__); printf("\n");}
-#define LOG_F(TAG,...) {time_t t;time(&t);printf("%s %#x>>> FATAL:<%s> ", ctime(&t), (unsigned int)std::hash<std::thread::id>{}(std::this_thread::get_id()), TAG);printf(__VA_ARGS__); printf("\n");}
+#define LOG_I(TAG,...) {time_t t;time(&t);printf("%s %#x>>> INFO:<%s> ", strtok(ctime(&t), "\n"), (unsigned int)std::hash<std::thread::id>{}(std::this_thread::get_id()), TAG);printf(__VA_ARGS__); printf("\n");}
+#define LOG_W(TAG,...) {time_t t;time(&t);printf("%s %#x>>> WARN:<%s> ", strtok(ctime(&t), "\n"), (unsigned int)std::hash<std::thread::id>{}(std::this_thread::get_id()), TAG);printf(__VA_ARGS__); printf("\n");}
+#define LOG_E(TAG,...) {time_t t;time(&t);printf("%s %#x>>> ERROR:<%s> ", strtok(ctime(&t), "\n"), (unsigned int)std::hash<std::thread::id>{}(std::this_thread::get_id()), TAG);printf(__VA_ARGS__); printf("\n");}
+#define LOG_F(TAG,...) {time_t t;time(&t);printf("%s %#x>>> FATAL:<%s> ", strtok(ctime(&t), "\n"), (unsigned int)std::hash<std::thread::id>{}(std::this_thread::get_id()), TAG);printf(__VA_ARGS__); printf("\n");}
 #endif
 
 #ifdef _WIN32
@@ -105,6 +105,7 @@
 #include <condition_variable>
 #include <time.h>
 #include "dynarray.h"
+#include "nlohmann/json.hpp"
 
 //#define null nullptr
 

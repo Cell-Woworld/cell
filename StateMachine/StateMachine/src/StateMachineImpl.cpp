@@ -5,7 +5,6 @@
 #include "stdafx.h"
 
 #include "StateMachineImpl.h"
-#include "../inc/IXMLParser.h"
 
 #include <assert.h>
 #include <sstream>
@@ -19,6 +18,8 @@
 #include "Transition.h"
 #include "NullCondition.h"
 #include "TransientState.h"
+#include "IFStatement.h"
+#include "LoopStatement.h"
 
 #include "History.h"
 #include "DeepHistory.h"
@@ -26,43 +27,18 @@
 #include "internal/DNA.h"
 #include "internal/IModel.h"
 #include "internal/utils/serializer.h"
+#include <fstream>
 
 #pragma warning (disable:4996)
 
 #define TAG "StateMachine"
 
+using namespace rapidxml;
 using namespace std;
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
-enum ENUM_TAG
-{
-	RAISE = 0,
-	SEND,
-	SCRIPT,
-	ASSIGN,
-	LOG,
-	INVOKE,
-	UNINVOKE,
-	FINAL_STATE,
-
-	STATE,
-	HISTORY,
-    SHALLOW_HISTORY,
-	DEEP_HISTORY,
-
-	ON_ENTRY,
-	ON_EXIT,
-
-	PARAM,
-
-    TRANSITION,
-
-	DATA_MODEL,
-	DATA,
-};
-
 const char* CStateMachineImpl::TAG_NAMES[] =
 {
 	"raise",
@@ -70,6 +46,11 @@ const char* CStateMachineImpl::TAG_NAMES[] =
 	"script",
 	"assign",
 	"log",
+	"if",
+	"elseif",
+	"else",
+	"foreach",
+	"foreach",
 	"invoke",
 	"invoke",
 	"final",
@@ -78,6 +59,7 @@ const char* CStateMachineImpl::TAG_NAMES[] =
 	"history",
     "shallow",
     "deep",
+    "parallel",
 
 	"onentry",
 	"onexit",
@@ -100,12 +82,17 @@ enum ENUM_ATTR
 	CONDITION,
 
 	SRC,
+	SRCEXPR,
 	TARGET,
 	NAME,
 	LOCATION,
 	LABEL,
 	EXPR,
 	AUTOFORWARD,
+
+	ARRAY,
+	INDEX,
+	ITEM,
 };
 
 const char* CStateMachineImpl::ATTR_NAMES[] =
@@ -118,12 +105,17 @@ const char* CStateMachineImpl::ATTR_NAMES[] =
 	"cond",
 
 	"src",
+	"srcexpr",
 	"target",
 	"name",
 	"location",
 	"label",
 	"expr",
 	"autoforward",
+
+	"array",
+	"index",
+	"item",
 };
 
 class Condition : public ICondition
@@ -155,7 +147,7 @@ public:
 	};
 	virtual ~Action() {};
 
-protected:
+public:
 	virtual void execute(const ParamPairList& params)
 	{
 		callback_->on_action(type(), name(), params);
@@ -173,34 +165,39 @@ CStateMachineImpl::~CStateMachineImpl()
     ClearAll();
 }
 
-bool CStateMachineImpl::Load(const char* szLogicMapFilename, BioSys::DNA* callback)
+bool CStateMachineImpl::Load(const char* szLogicMap, BioSys::DNA* callback, bool isFile)
 {
 	owner_ = callback;
     ClearAll();
 
 	// this open and parse the XML file:
-	IXMLDomParser objXMLParser;
-	objXMLParser.setRemoveClears(false);
-	ITCXMLNode xMainNode = objXMLParser.openFileHelper(szLogicMapFilename, "scxml");
+	xml_document<> doc;
+	vector<char> buffer;
+	if (isFile)
+	{
+		// Read the xml file into a vector
+		ifstream theFile(szLogicMap);
+		buffer = vector<char>((istreambuf_iterator<char>(theFile)), istreambuf_iterator<char>());
+	}
+	else
+	{
+		buffer.insert(buffer.end(), szLogicMap, szLogicMap + strlen(szLogicMap));
+	}
+	buffer.push_back('\0');
+	// Parse the buffer using the xml file parsing library into doc
+	doc.parse<0>(&buffer[0]);
+	xml_node<>* xMainNode = doc.first_node("scxml");
 
-    if (xMainNode.isEmpty())
+    if (xMainNode == nullptr)
     {
-		String _content;
-		if (callback->get_content(szLogicMapFilename, _content) == true)
-		{
-			xMainNode = objXMLParser.parseString(_content.c_str(), "scxml");
-		}
-		else
-		{
-			LOG_E(TAG, "CStateMachineImpl::Load() - oXMLParser.Load(%s) - false.", szLogicMapFilename);
-			assert(false);
-			return false;
-		}
+		LOG_E(TAG, "CStateMachineImpl::Load() - oXMLParser.Load(%s) - false.", szLogicMap);
+		assert(false);
+		return false;
     }
 
-    // numbering all states according to XML
-	m_mapStates[m_strEntryStateID] = new CState(m_strEntryStateID.c_str(), nullptr);
-	if (false == CreateMap(callback, xMainNode, m_mapStates[m_strEntryStateID]))
+    // Create all states according to XML
+	m_mapStates[m_strEntryStateID] = new CState(m_strEntryStateID.c_str());
+	if (false == CreateMap(callback, *xMainNode, m_mapStates[m_strEntryStateID]))
     {
         LOG_E(TAG, "CStateMachineImpl::Load() - CreateStateMap() - false");
 		assert(false);
@@ -209,7 +206,7 @@ bool CStateMachineImpl::Load(const char* szLogicMapFilename, BioSys::DNA* callba
 
 	LOG_D(TAG, "Adding Transitions");
     // Link states with transitions
-    if (LinkTransitions(callback, xMainNode) == false)
+    if (LinkTransitions(callback, *xMainNode) == false)
     {
 		LOG_E(TAG, "CStateMachineImpl::Load() - LinkTransitions(oXMLParser) - false");
 		assert(false);
@@ -220,13 +217,14 @@ bool CStateMachineImpl::Load(const char* szLogicMapFilename, BioSys::DNA* callba
 
     // power on the engine
     const char* szRootEntryStateID = nullptr;
-	szRootEntryStateID = xMainNode.getAttribute(ATTR_NAMES[INITIAL_STATE]);
+	szRootEntryStateID = xMainNode->first_attribute(ATTR_NAMES[INITIAL_STATE]) == nullptr ? nullptr : xMainNode->first_attribute(ATTR_NAMES[INITIAL_STATE])->value();
 
     if (szRootEntryStateID == nullptr)
     {
 		LOG_D(TAG, "CStateMachineImpl::Load() - no entry assigned, apply the first state");
-		const ITCXMLNode& _first_child = xMainNode.getChildNode(TAG_NAMES[STATE], 0);
-		szRootEntryStateID = _first_child.getAttribute(ATTR_NAMES[ID]);
+		assert(xMainNode->first_node(TAG_NAMES[STATE]) != nullptr);
+		const xml_node<>& _first_child = *xMainNode->first_node(TAG_NAMES[STATE]);
+		szRootEntryStateID = _first_child.first_attribute(ATTR_NAMES[ID]) == nullptr ? nullptr : _first_child.first_attribute(ATTR_NAMES[ID])->value();
 		//assert(false);
 		//return false;
     }
@@ -290,9 +288,11 @@ void CStateMachineImpl::SetActiveStates(const char* lstActiveState[], const int 
 			//vector<string> _state_name_list;
 			//_Split(_state_name_list, lstActiveState[i], "/");
 			//for (auto _state : _state_name_list)
-			String _state = String(lstActiveState[i]);
+			string _state = string(lstActiveState[i]);
+			if (_state.front() == '\"' && _state.back() == '\"')
+				_state = _state.substr(1, _state.size() - 2);
 			size_t _pos = _state.find_last_of('/');
-			if (_pos != String::npos && _pos < _state.size() - 1)
+			if (_pos != string::npos && _pos < _state.size() - 1)
 				_state = _state.substr(_pos + 1);
 			StateMap::iterator itStateMap = m_mapStates.find(_state);
 			if (itStateMap != m_mapStates.end())
@@ -340,23 +340,15 @@ void CStateMachineImpl::DeletePtrInArrayAndClearMap(_Map& Map)
 	}
 }
 
-bool CStateMachineImpl::CreateMap(BioSys::DNA* callback, const ITCXMLNode& xNode, CState* pParentNode)
+bool CStateMachineImpl::CreateMap(BioSys::DNA* callback, const xml_node<>& xNode, CState* pParentNode)
 {
-	vector<int> vectStateID = { STATE, FINAL_STATE};
+	vector<int> vectStateID = { STATE, FINAL_STATE, PARALLEL};
 	for (auto const &nStateID : vectStateID)
 	{
-		int nStateCount = xNode.nChildNode(TAG_NAMES[nStateID]);
-
-		if (nStateCount < 0)
+		// Iterate over the states
+		for (xml_node<>* itStateNode = xNode.first_node(TAG_NAMES[nStateID]); itStateNode; itStateNode = itStateNode->next_sibling(TAG_NAMES[nStateID]))
 		{
-			LOG_E(TAG, "!!! CStateMachineImpl::CreateStateMap() - keyCount:%d is illegal.", nStateCount);
-			assert(false);
-			return false;
-		}
-		for (int i = 0, itItem = 0; i < nStateCount; ++i)
-		{
-			ITCXMLNode itStateNode = xNode.getChildNode(TAG_NAMES[nStateID], &itItem);
-			const char* _state_name = itStateNode.getAttribute(ATTR_NAMES[ID]);
+			const char* _state_name = itStateNode->first_attribute(ATTR_NAMES[ID]) == nullptr ? nullptr : itStateNode->first_attribute(ATTR_NAMES[ID])->value();
 
 			if (m_mapStates.count(_state_name) > 0)
 			{
@@ -365,13 +357,13 @@ bool CStateMachineImpl::CreateMap(BioSys::DNA* callback, const ITCXMLNode& xNode
 				return false;
 			}
 
-			CreateDataModel(itStateNode, m_mapDataModel);
+			CreateDataModel(*itStateNode, m_mapDataModel);
 
 			CState *pNewState = nullptr;
-			if (CheckIfTransientState(itStateNode) == true)
+			if (CheckIfTransientState(*itStateNode) == true)
 				pNewState = new CTransientState(_state_name);
 			else
-				pNewState = new CState(_state_name);
+				pNewState = new CState(_state_name, nStateID);
 			m_mapStates[_state_name] = pNewState;
 
 			LOG_D(TAG, "%s[%s] attached", TAG_NAMES[nStateID], _state_name);
@@ -380,22 +372,23 @@ bool CStateMachineImpl::CreateMap(BioSys::DNA* callback, const ITCXMLNode& xNode
 				pParentNode->AddState(m_mapStates[_state_name]);
 			}
 
-			if (itStateNode.nChildNode(TAG_NAMES[nStateID]) > 0)
+			if (CreateMap(callback, *itStateNode, m_mapStates[_state_name]) == false)
 			{
-				if (CreateMap(callback, itStateNode, m_mapStates[_state_name]) == false)
-				{
-					assert(false);
-					return false;
-				}
+				assert(false);
+				return false;
 			}
 
 			const char* cszInitStateName = nullptr;
-			if (itStateNode.getAttribute(ATTR_NAMES[INITIAL_STATE]) != nullptr)
-				cszInitStateName = itStateNode.getAttribute(ATTR_NAMES[INITIAL_STATE]);
-			else
+			if (nStateID == STATE)
 			{
-				const ITCXMLNode& _first_child = itStateNode.getChildNode(TAG_NAMES[STATE], 0);
-				cszInitStateName = _first_child.getAttribute(ATTR_NAMES[ID]);
+				if (itStateNode->first_attribute(ATTR_NAMES[INITIAL_STATE]) != nullptr)
+					cszInitStateName = itStateNode->first_attribute(ATTR_NAMES[INITIAL_STATE]) == nullptr ? nullptr : itStateNode->first_attribute(ATTR_NAMES[INITIAL_STATE])->value();
+				else
+				{
+					const xml_node<>* _first_child = itStateNode->first_node(TAG_NAMES[STATE]);
+					if (_first_child != nullptr && _first_child->first_attribute(ATTR_NAMES[ID]) != nullptr)
+						cszInitStateName = _first_child->first_attribute(ATTR_NAMES[ID]) == nullptr ? nullptr : _first_child->first_attribute(ATTR_NAMES[ID])->value();
+				}
 			}
 			if (cszInitStateName != nullptr)
 			{
@@ -412,24 +405,24 @@ bool CStateMachineImpl::CreateMap(BioSys::DNA* callback, const ITCXMLNode& xNode
 			}
 
 			vector<CTransition::ActionPair> _invoke_action_pair_list;
-			getInvokeList(callback, itStateNode, INVOKE, _invoke_action_pair_list);
+			getInvokeList(callback, *itStateNode, INVOKE, _invoke_action_pair_list);
 			vector<CTransition::ActionPair> _uninvoke_action_pair_list;
-			getInvokeList(callback, itStateNode, UNINVOKE, _uninvoke_action_pair_list);
+			getInvokeList(callback, *itStateNode, UNINVOKE, _uninvoke_action_pair_list);
 			m_mapStates[_state_name]->add_invoke_action(_invoke_action_pair_list, _uninvoke_action_pair_list);
 
-			bool _onentry = itStateNode.nChildNode(TAG_NAMES[ON_ENTRY]) > 0;
+			bool _onentry = itStateNode->first_node(TAG_NAMES[ON_ENTRY]) != nullptr;
 			if (_onentry)
 			{
 				vector<CTransition::ActionPair> _action_pair_list;
-				getActionList(callback, itStateNode.getChildNode(TAG_NAMES[ON_ENTRY]), _action_pair_list);
+				getActionList(callback, *itStateNode->first_node(TAG_NAMES[ON_ENTRY]), _action_pair_list);
 				m_mapStates[_state_name]->add_entry_action(_action_pair_list);
 			}
 
-			bool _onexit = itStateNode.nChildNode(TAG_NAMES[ON_EXIT]) > 0;
+			bool _onexit = itStateNode->first_node(TAG_NAMES[ON_EXIT]) != nullptr;
 			if (_onexit)
 			{
 				vector<CTransition::ActionPair> _action_pair_list;
-				getActionList(callback, itStateNode.getChildNode(TAG_NAMES[ON_EXIT]), _action_pair_list);
+				getActionList(callback, *itStateNode->first_node(TAG_NAMES[ON_EXIT]), _action_pair_list);
 				m_mapStates[_state_name]->add_exit_action(_action_pair_list);
 			}
 
@@ -438,32 +431,28 @@ bool CStateMachineImpl::CreateMap(BioSys::DNA* callback, const ITCXMLNode& xNode
 				vector<CTransition::ActionPair> _action_pair_list;
 				_action_pair_list.push_back(CTransition::ActionPair());
 				CTransition::ActionPair& _action_pair = _action_pair_list.back();
-				const char* _action_name = itStateNode.getAttribute(ATTR_NAMES[ID]);
+				const char* _action_name = itStateNode->first_attribute(ATTR_NAMES[ID]) == nullptr ? nullptr : itStateNode->first_attribute(ATTR_NAMES[ID])->value();
 				pair<string, int> _action_key = make_pair(_action_name, FINAL_STATE);
 				_action_pair.pAction = new Action(callback, _action_name, FINAL_STATE);
 				m_mapActions[_action_key] = _action_pair.pAction;
 				m_mapStates[_state_name]->add_entry_action(_action_pair_list);
 			}
-
-			int nTransitionCount = itStateNode.nChildNode(TAG_NAMES[TRANSITION]);
-
-			for (int j = 0, itItem = 0; j < nTransitionCount; ++j)
+			else if (nStateID == PARALLEL)
 			{
-				ITCXMLNode itTransitionNode = itStateNode.getChildNode(TAG_NAMES[TRANSITION], &itItem);
+				m_mapStates[_state_name]->set_ConcurrentState(true);
+			}
 
+			for (xml_node<>* itTransitionNode = itStateNode->first_node(TAG_NAMES[TRANSITION]); itTransitionNode; itTransitionNode = itTransitionNode->next_sibling(TAG_NAMES[TRANSITION]))
+			{
 				// event
-				const char* szEventName = itTransitionNode.getAttribute(ATTR_NAMES[EVENT]);
-				if (szEventName != nullptr)
+				std::string _event_name = itTransitionNode->first_attribute(ATTR_NAMES[EVENT]) == nullptr ? "" : itTransitionNode->first_attribute(ATTR_NAMES[EVENT])->value();
+				ReplaceDataModel(_event_name);
+				if (m_mapEvents.count(_event_name) == 0)
 				{
-					string strEventName = itTransitionNode.getAttribute(ATTR_NAMES[EVENT]);
-					ReplaceDataModel(strEventName);
-					if (m_mapEvents.count(strEventName) == 0)
-					{
-						m_mapEvents[strEventName].push_back(new IEvent(strEventName.c_str()));
-					}
-
-					LOG_D(TAG, "%s[%s] attached", ATTR_NAMES[EVENT], strEventName.c_str());
+					m_mapEvents[_event_name].push_back(new IEvent(_event_name.c_str()));
 				}
+
+				LOG_D(TAG, "%s[%s] attached", ATTR_NAMES[EVENT], _event_name.c_str());
 			}
 		}	//	for (int i = 0; i < nStateCount; ++i)
 	}
@@ -477,80 +466,52 @@ bool CStateMachineImpl::CreateMap(BioSys::DNA* callback, const ITCXMLNode& xNode
 
 	{	// History
 		const int THE_SAME_STRING = 0;
-		int nHistoryCount = xNode.nChildNode(TAG_NAMES[HISTORY]);
-		if (nHistoryCount < 0)
+		for (xml_node<>* xHistoryNode = xNode.first_node(TAG_NAMES[HISTORY]); xHistoryNode; xHistoryNode = xHistoryNode->next_sibling(TAG_NAMES[HISTORY]))
 		{
-			LOG_E(TAG, "!!! CStateMachineImpl::CreateStateMap() - keyCount:%d is illegal.", nHistoryCount);
-			assert(false);
-			return false;
-		}
-		for (int i = 0, itItem = 0; i < nHistoryCount; ++i)
-		{
-			ITCXMLNode xHistoryNode = xNode.getChildNode(TAG_NAMES[HISTORY], &itItem);
-			if (!xHistoryNode.isEmpty())
+			const char* szType = xHistoryNode->first_attribute(ATTR_NAMES[TYPE]) == nullptr ? nullptr : xHistoryNode->first_attribute(ATTR_NAMES[TYPE])->value();
+			const char* szName = xHistoryNode->first_attribute(ATTR_NAMES[ID]) == nullptr ? nullptr : xHistoryNode->first_attribute(ATTR_NAMES[ID])->value();
+			//if (stricmp(szType, TAG_NAMES[DEEP_HISTORY]) == THE_SAME_STRING)			// "undeclared identifire 'stricmp'" reported by ndk
+			if (strcmp(szType, TAG_NAMES[DEEP_HISTORY]) == THE_SAME_STRING)
 			{
-				const char* szType = xHistoryNode.getAttribute(ATTR_NAMES[TYPE]);
-				const char* szName = xHistoryNode.getAttribute(ATTR_NAMES[ID]);
-				//if (stricmp(szType, TAG_NAMES[DEEP_HISTORY]) == THE_SAME_STRING)			// "undeclared identifire 'stricmp'" reported by ndk
-				if (strcmp(szType, TAG_NAMES[DEEP_HISTORY]) == THE_SAME_STRING)
-				{
-					CState *pNewState = pParentNode->DeepHistoryEntry();
-					m_mapStates[pNewState->GetName()] = pNewState;
-					m_mapHistory[szName] = pNewState;
-					LOG_D(TAG, "%s[%s] attached", TAG_NAMES[DEEP_HISTORY], szName);
-				}
-				//else if (stricmp(szType, TAG_NAMES[SHALLOW_HISTORY]) == THE_SAME_STRING)
-				else if (strcmp(szType, TAG_NAMES[SHALLOW_HISTORY]) == THE_SAME_STRING)		// "undeclared identifire 'stricmp'" reported by ndk
-				{
-					CState *pNewState = pParentNode->HistoryEntry();
-					m_mapStates[pNewState->GetName()] = pNewState;
-					m_mapHistory[szName] = pNewState;
-					LOG_D(TAG, "%s[%s] attached", TAG_NAMES[HISTORY], szName);
-				}
+				CState *pNewState = pParentNode->DeepHistoryEntry();
+				m_mapStates[pNewState->GetName()] = pNewState;
+				m_mapHistory[szName] = pNewState;
+				LOG_D(TAG, "%s[%s] attached", TAG_NAMES[DEEP_HISTORY], szName);
+			}
+			//else if (stricmp(szType, TAG_NAMES[SHALLOW_HISTORY]) == THE_SAME_STRING)
+			else if (strcmp(szType, TAG_NAMES[SHALLOW_HISTORY]) == THE_SAME_STRING)		// "undeclared identifire 'stricmp'" reported by ndk
+			{
+				CState *pNewState = pParentNode->HistoryEntry();
+				m_mapStates[pNewState->GetName()] = pNewState;
+				m_mapHistory[szName] = pNewState;
+				LOG_D(TAG, "%s[%s] attached", TAG_NAMES[HISTORY], szName);
 			}
 		}
 	}
 	return true;
 }
 
-bool CStateMachineImpl::LinkTransitions(BioSys::DNA* callback, const ITCXMLNode& xNode)
+bool CStateMachineImpl::LinkTransitions(BioSys::DNA* callback, const xml_node<>& xNode)
 {
-	vector<int> vectStateID = { STATE, FINAL_STATE };
+	vector<int> vectStateID = { STATE, FINAL_STATE, PARALLEL };
 	for (auto const &nStateID : vectStateID)
 	{
-		int nStateCount = xNode.nChildNode(TAG_NAMES[nStateID]);
-
-		if (nStateCount < 0)
+		for (xml_node<>* itStateNode = xNode.first_node(TAG_NAMES[nStateID]); itStateNode; itStateNode = itStateNode->next_sibling(TAG_NAMES[nStateID]))
 		{
-			LOG_E(TAG, "!!! CStateMachineImpl::CreateStateMap() - keyCount:%d is illegal.", nStateCount);
-			assert(false);
-			return false;
-		}
-
-		for (int i = 0, itItem = 0; i < nStateCount; ++i)
-		{
-			ITCXMLNode itStateNode = xNode.getChildNode(TAG_NAMES[nStateID], &itItem);
-			if (itStateNode.nChildNode(TAG_NAMES[nStateID]) > 0)
+			if (LinkTransitions(callback, *itStateNode) == false)
 			{
-				if (LinkTransitions(callback, itStateNode) == false)
-				{
-					assert(false);
-					return false;
-				}
+				assert(false);
+				return false;
 			}
 
-			int nTransitionCount = itStateNode.nChildNode(TAG_NAMES[TRANSITION]);
-
-			for (int j = 0, itItem = 0; j < nTransitionCount; ++j)
+			for (xml_node<>* itTransitionNode = itStateNode->first_node(TAG_NAMES[TRANSITION]); itTransitionNode; itTransitionNode = itTransitionNode->next_sibling(TAG_NAMES[TRANSITION]))
 			{
-				ITCXMLNode itTransitionNode = itStateNode.getChildNode(TAG_NAMES[TRANSITION], &itItem);
-
-				CState* pFromState = m_mapStates[itStateNode.getAttribute(ATTR_NAMES[ID])];
+				CState* pFromState = m_mapStates[itStateNode->first_attribute(ATTR_NAMES[ID])->value()];
 				CState* pToState = nullptr;
 				bool bIsNoTargetTransition = false;
-				if (itTransitionNode.getAttribute(ATTR_NAMES[TARGET]) != nullptr)
+				if (itTransitionNode->first_attribute(ATTR_NAMES[TARGET]) != nullptr)
 				{
-					const char* _state_name = itTransitionNode.getAttribute(ATTR_NAMES[TARGET]);
+					const char* _state_name = itTransitionNode->first_attribute(ATTR_NAMES[TARGET]) == nullptr ? nullptr : itTransitionNode->first_attribute(ATTR_NAMES[TARGET])->value();
 					const auto& _itr = m_mapStates.find(_state_name);
 					if (_itr != m_mapStates.end())
 					{
@@ -566,7 +527,7 @@ bool CStateMachineImpl::LinkTransitions(BioSys::DNA* callback, const ITCXMLNode&
 				else
 				{
 					bIsNoTargetTransition = true;
-					if (pFromState->isCompositeState())
+					if (pFromState->isCompositeState() && !pFromState->get_ConcurrentState())
 					{
 						pToState = pFromState->DeepHistoryEntry();
 						m_mapStates[pToState->GetName().c_str()] = pToState;
@@ -579,9 +540,9 @@ bool CStateMachineImpl::LinkTransitions(BioSys::DNA* callback, const ITCXMLNode&
 				}
 
 				IEvent* pEvent = nullptr;
-				if (itTransitionNode.getAttribute(ATTR_NAMES[EVENT]) != nullptr)
+				if (itTransitionNode->first_attribute(ATTR_NAMES[EVENT]) != nullptr)
 				{
-					string strEventName = itTransitionNode.getAttribute(ATTR_NAMES[EVENT]);
+					string strEventName = itTransitionNode->first_attribute(ATTR_NAMES[EVENT]) == nullptr ? "" : itTransitionNode->first_attribute(ATTR_NAMES[EVENT])->value();
 					ReplaceDataModel(strEventName);
 					pEvent = m_mapEvents[strEventName][0];
 				}
@@ -592,7 +553,7 @@ bool CStateMachineImpl::LinkTransitions(BioSys::DNA* callback, const ITCXMLNode&
 				}
 
 				unique_ptr<CTransition::ConditionPair> pCondition;
-				const char* cszConditionName = itTransitionNode.getAttribute(ATTR_NAMES[CONDITION]);
+				const char* cszConditionName = itTransitionNode->first_attribute(ATTR_NAMES[CONDITION]) == nullptr ? nullptr : itTransitionNode->first_attribute(ATTR_NAMES[CONDITION])->value();
 				if (cszConditionName != nullptr)
 				{
 					string strFullConditionName = cszConditionName;
@@ -604,7 +565,7 @@ bool CStateMachineImpl::LinkTransitions(BioSys::DNA* callback, const ITCXMLNode&
 					if (found != string::npos)
 					{
 						std::size_t _invalid_function_name = strFullConditionName.find_last_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_");
-						if (_invalid_function_name == String::npos)
+						if (_invalid_function_name == string::npos)
 						{
 							strConditionName = strFullConditionName.substr(0, found);
 							if (strConditionName.length() == 0)
@@ -649,8 +610,10 @@ bool CStateMachineImpl::LinkTransitions(BioSys::DNA* callback, const ITCXMLNode&
 				}
 
 				vector<CTransition::ActionPair> vectActions;
-				getActionList(callback, itTransitionNode, vectActions);
+				getActionList(callback, *itTransitionNode, vectActions);
 
+				if (pToState == nullptr)
+					LOG_D(TAG, "Target state==nullptr, source state name=%s", pFromState->GetName().c_str());
 				assert(pToState != nullptr);
 				CTransition* pNewTrans = pFromState->AddTrans(pToState, pEvent, vectActions, pCondition.get(), bIsNoTargetTransition);
 			}	// for (int i = 0; i < nTransitionCount; ++i)
@@ -691,24 +654,23 @@ void CStateMachineImpl::_Split(vector<string>& vectOutput, const string& strSrc,
 	}
 }
 
-void CStateMachineImpl::getActionList(BioSys::DNA* callback, const ITCXMLNode& root_node, vector<CTransition::ActionPair>& action_pair_list)
+template<class T>
+void CStateMachineImpl::getActionList(BioSys::DNA* callback, const xml_node<>& root_node, vector<T>& action_pair_list)
 {
-	int _action_count = root_node.nChildNode();
-	for (int i = 0; i < _action_count; i++)
+	for (xml_node<>* _action_node = root_node.first_node(); _action_node; _action_node = _action_node->next_sibling())
 	{
-		action_pair_list.push_back(CTransition::ActionPair());
-		CTransition::ActionPair& _action_pair = action_pair_list.back();
-		const ITCXMLNode& _action_node = root_node.getChildNode(i);
-		if (strcmp(_action_node.getName(), TAG_NAMES[RAISE]) == 0)
+		action_pair_list.push_back(T());
+		T& _action_pair = action_pair_list.back();
+		if (strcmp(_action_node->name(), TAG_NAMES[RAISE]) == 0)
 		{
-			const char* _action_name = _action_node.getAttribute(ATTR_NAMES[EVENT]);
+			const char* _action_name = _action_node->first_attribute(ATTR_NAMES[EVENT]) == nullptr ? nullptr : _action_node->first_attribute(ATTR_NAMES[EVENT])->value();
 			if (_action_name == nullptr)
 			{
-				LOG_E(TAG, "Action \"%s\" with event name=NULL in transition \"%s\" or state \"%s\"", TAG_NAMES[RAISE], root_node.getAttribute(ATTR_NAMES[EVENT]), root_node.getAttribute(ATTR_NAMES[ID]));
+				LOG_E(TAG, "Action \"%s\" with event name=NULL in transition \"%s\" or state \"%s\"", TAG_NAMES[RAISE], root_node.first_attribute(ATTR_NAMES[EVENT])->value(), root_node.first_attribute(ATTR_NAMES[ID])->value());
 				assert(false);
 				return;
 			}
-			String _actionName = _action_name;
+			string _actionName = _action_name;
 			ReplaceDataModel(_actionName);
 			pair<string, int> _action_key = make_pair(_actionName, RAISE);
 			if (m_mapActions.count(_action_key) > 0)
@@ -719,16 +681,16 @@ void CStateMachineImpl::getActionList(BioSys::DNA* callback, const ITCXMLNode& r
 				m_mapActions[_action_key] = _action_pair.pAction;
 			}
 		}
-		else if (strcmp(_action_node.getName(), TAG_NAMES[SEND]) == 0)
+		else if (strcmp(_action_node->name(), TAG_NAMES[SEND]) == 0)
 		{
-			const char* _action_name = _action_node.getAttribute(ATTR_NAMES[EVENT]);
+			const char* _action_name = _action_node->first_attribute(ATTR_NAMES[EVENT]) == nullptr ? nullptr : _action_node->first_attribute(ATTR_NAMES[EVENT])->value();
 			if (_action_name == nullptr)
 			{
-				LOG_E(TAG, "Action \"%s\" with event name=NULL in transition \"%s\" or state \"%s\"", TAG_NAMES[SEND], root_node.getAttribute(ATTR_NAMES[EVENT]), root_node.getAttribute(ATTR_NAMES[ID]));
+				LOG_E(TAG, "Action \"%s\" with event name=NULL in transition \"%s\" or state \"%s\"", TAG_NAMES[SEND], root_node.first_attribute(ATTR_NAMES[EVENT])->value(), root_node.first_attribute(ATTR_NAMES[ID])->value());
 				assert(false);
 				return;
 			}
-			String _actionName = _action_name;
+			string _actionName = _action_name;
 			ReplaceDataModel(_actionName);
 			pair<string, int> _action_key = make_pair(_actionName, SEND);
 			if (m_mapActions.count(_action_key) > 0)
@@ -738,39 +700,37 @@ void CStateMachineImpl::getActionList(BioSys::DNA* callback, const ITCXMLNode& r
 				_action_pair.pAction = new Action(callback, _actionName.c_str(), SEND);
 				m_mapActions[_action_key] = _action_pair.pAction;
 			}
-			int _param_count = _action_node.nChildNode(TAG_NAMES[PARAM]);
-			for (int j = 0; j < _param_count; j++)
+			for (xml_node<>* _param_node = _action_node->first_node(TAG_NAMES[PARAM]); _param_node; _param_node = _param_node->next_sibling(TAG_NAMES[PARAM]))
 			{
-				ITCXMLNode _param_node = _action_node.getChildNode(TAG_NAMES[PARAM], j);
-				//if (_param_node.getAttribute(ATTR_NAMES[NAME]) == nullptr || _param_node.getAttribute(ATTR_NAMES[EXPR]) == nullptr)
-				if (_param_node.getAttribute(ATTR_NAMES[NAME]) == nullptr)
+				//if (_param_node.first_attribute(ATTR_NAMES[NAME]) == nullptr || _param_node.first_attribute(ATTR_NAMES[EXPR]) == nullptr)
+				if (_param_node->first_attribute(ATTR_NAMES[NAME]) == nullptr)
 				{
-					LOG_E(TAG, "!!! Invalid parameter. 'Send' field in state \"%s\" is null.", root_node.getParentNode().getAttribute(ATTR_NAMES[ID]));
+					LOG_E(TAG, "!!! Invalid parameter. 'Send' field in state \"%s\" is null.", root_node.parent()->first_attribute(ATTR_NAMES[ID])->value());
 					action_pair_list.pop_back();
 					assert(false);
 				}
-				else if (_param_node.getAttribute(ATTR_NAMES[EXPR]) == nullptr)
+				else if (_param_node->first_attribute(ATTR_NAMES[EXPR]) == nullptr)
 				{
-					//LOG_E(TAG, "!!! Invalid value of parameter \"%s\". expr of 'send' field in state \"%s\" is null.", _param_node.getAttribute(ATTR_NAMES[NAME]), root_node.getParentNode().getAttribute(ATTR_NAMES[ID]));
+					//LOG_E(TAG, "!!! Invalid value of parameter \"%s\". expr of 'send' field in state \"%s\" is null.", _param_node.first_attribute(ATTR_NAMES[NAME]), root_node.getParentNode().first_attribute(ATTR_NAMES[ID]));
 					std::string _expr = "";
 					ReplaceDataModel(_expr);
-					_action_pair.lstActionParam.push_back(make_pair(_param_node.getAttribute(ATTR_NAMES[NAME]), _expr));
+					_action_pair.lstActionParam.push_back(make_pair(_param_node->first_attribute(ATTR_NAMES[NAME])->value(), _expr));
 				}
 				else
 				{
-					std::string _expr = _param_node.getAttribute(ATTR_NAMES[EXPR]);
+					std::string _expr = _param_node->first_attribute(ATTR_NAMES[EXPR]) == nullptr ? "" : _param_node->first_attribute(ATTR_NAMES[EXPR])->value();
 					ReplaceDataModel(_expr);
-					_action_pair.lstActionParam.push_back(make_pair(_param_node.getAttribute(ATTR_NAMES[NAME]), _expr));
+					_action_pair.lstActionParam.push_back(make_pair(_param_node->first_attribute(ATTR_NAMES[NAME])->value(), _expr));
 				}
 			}
 		}
-		else if (strcmp(_action_node.getName(), TAG_NAMES[SCRIPT]) == 0)
+		else if (strcmp(_action_node->name(), TAG_NAMES[SCRIPT]) == 0)
 		{
 			vector<string> action_name_list;
-			_Split(action_name_list, _action_node.getText()==nullptr ? "" : _action_node.getText(), ";");
+			_Split(action_name_list, _action_node->value()==nullptr ? "" : _action_node->value(), ";");
 			if (action_name_list.size() == 0)
 			{
-				LOG_E(TAG, "!!! Invalid script. Script of state \"%s\" is null.", root_node.getParentNode().getAttribute(ATTR_NAMES[ID]));
+				LOG_E(TAG, "!!! Invalid script. Script of state \"%s\" is null.", root_node.parent()->first_attribute(ATTR_NAMES[ID])->value());
 				action_pair_list.pop_back();
 				assert(false);
 			}
@@ -799,7 +759,7 @@ void CStateMachineImpl::getActionList(BioSys::DNA* callback, const ITCXMLNode& r
 						size_t _param_end = _action_full_name.find_last_not_of(" )");
 						if (_param_end != std::string::npos && _param_end > _param_begin + 1)
 						{
-							String _params = _action_full_name.substr(_param_begin, _param_end - _param_begin + 1);
+							string _params = _action_full_name.substr(_param_begin, _param_end - _param_begin + 1);
 							ReplaceDataModel(_params);
 							_action_pair.lstActionParam.push_back(make_pair("params_in_JSON", _params));
 						}
@@ -807,9 +767,9 @@ void CStateMachineImpl::getActionList(BioSys::DNA* callback, const ITCXMLNode& r
 				}
 			}
 		}
-		else if (strcmp(_action_node.getName(), TAG_NAMES[ASSIGN]) == 0)
+		else if (strcmp(_action_node->name(), TAG_NAMES[ASSIGN]) == 0)
 		{
-			const char* _action_name = "Assign";
+			const char _action_name[] = "Assign";
 			pair<string, int> _action_key = make_pair(_action_name, ASSIGN);
 			if (m_mapActions.count(_action_key) > 0)
 				_action_pair.pAction = m_mapActions[_action_key];
@@ -818,8 +778,8 @@ void CStateMachineImpl::getActionList(BioSys::DNA* callback, const ITCXMLNode& r
 				_action_pair.pAction = new Action(callback, _action_name, ASSIGN);
 				m_mapActions[_action_key] = _action_pair.pAction;
 			}
-			//if (_action_node.getAttribute(ATTR_NAMES[LOCATION]) == nullptr || _action_node.getAttribute(ATTR_NAMES[EXPR]) == nullptr)
-			if (_action_node.getAttribute(ATTR_NAMES[LOCATION]) == nullptr)
+			//if (_action_node.first_attribute(ATTR_NAMES[LOCATION]) == nullptr || _action_node.first_attribute(ATTR_NAMES[EXPR]) == nullptr)
+			if (_action_node->first_attribute(ATTR_NAMES[LOCATION]) == nullptr)
 			{
 				//LOG_E(TAG, "Assign model with location==null or expression==null!");
 				LOG_E(TAG, "Assign model with location==null");
@@ -827,18 +787,18 @@ void CStateMachineImpl::getActionList(BioSys::DNA* callback, const ITCXMLNode& r
 			}
 			else
 			{
-				std::string _location = _action_node.getAttribute(ATTR_NAMES[LOCATION]);
+				std::string _location = _action_node->first_attribute(ATTR_NAMES[LOCATION]) == nullptr ? "" : _action_node->first_attribute(ATTR_NAMES[LOCATION])->value();
 				ReplaceDataModel(_location);
 				std::string _expr = "";
-				if (_action_node.getAttribute(ATTR_NAMES[EXPR]) != nullptr)
-					_expr = _action_node.getAttribute(ATTR_NAMES[EXPR]);
+				if (_action_node->first_attribute(ATTR_NAMES[EXPR]) != nullptr)
+					_expr = _action_node->first_attribute(ATTR_NAMES[EXPR]) == nullptr ? "" : _action_node->first_attribute(ATTR_NAMES[EXPR])->value();
 				ReplaceDataModel(_expr);
 				_action_pair.lstActionParam.push_back(make_pair(_location, _expr));
 			}
 		}
-		else if (strcmp(_action_node.getName(), TAG_NAMES[LOG]) == 0)
+		else if (strcmp(_action_node->name(), TAG_NAMES[LOG]) == 0)
 		{
-			const char* _action_name = "Log";
+			const char _action_name[] = "Log";
 			pair<string, int> _action_key = make_pair(_action_name, LOG);
 			if (m_mapActions.count(_action_key) > 0)
 				_action_pair.pAction = m_mapActions[_action_key];
@@ -847,12 +807,112 @@ void CStateMachineImpl::getActionList(BioSys::DNA* callback, const ITCXMLNode& r
 				_action_pair.pAction = new Action(callback, _action_name, LOG);
 				m_mapActions[_action_key] = _action_pair.pAction;
 			}
-			std::string _label = _action_node.getAttribute(ATTR_NAMES[LABEL]);
+			std::string _label = _action_node->first_attribute(ATTR_NAMES[LABEL]) == nullptr ? "" : _action_node->first_attribute(ATTR_NAMES[LABEL])->value();
 			ReplaceDataModel(_label);
 			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[LABEL], _label));
-			std::string _expr = _action_node.getAttribute(ATTR_NAMES[EXPR]);
+			std::string _expr = _action_node->first_attribute(ATTR_NAMES[EXPR]) == nullptr ? "" : _action_node->first_attribute(ATTR_NAMES[EXPR])->value();
 			ReplaceDataModel(_expr);
 			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[EXPR], _expr));
+		}
+		else if (strcmp(_action_node->name(), TAG_NAMES[IF]) == 0)
+		{
+			if (_action_node->first_attribute(ATTR_NAMES[CONDITION]) == nullptr)
+			{
+				LOG_E(TAG, "If statement with condition==null");
+				assert(false);
+				return;
+			}
+
+			const char* _action_name = _action_node->name();
+			//std::string _condition = _action_node.first_attribute(ATTR_NAMES[CONDITION]);
+			//ReplaceDataModel(_condition);
+			//_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[CONDITION], _condition));
+			unique_ptr<IFStatement::ConditionPair> pCondition;
+			const char* cszConditionName = _action_node->first_attribute(ATTR_NAMES[CONDITION]) == nullptr ? nullptr : _action_node->first_attribute(ATTR_NAMES[CONDITION])->value();
+			string strFullConditionName = cszConditionName;
+			string strConditionName = "";
+
+			ReplaceDataModel(strFullConditionName);
+
+			std::size_t found = strFullConditionName.find_first_of("(");
+			if (found != string::npos)
+			{
+				std::size_t _invalid_function_name = strFullConditionName.find_last_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_");
+				if (_invalid_function_name == string::npos)
+				{
+					strConditionName = strFullConditionName.substr(0, found);
+					if (strConditionName.length() == 0)
+						strConditionName = strFullConditionName;
+				}
+				else
+				{
+					strConditionName = strFullConditionName;
+				}
+			}
+			else
+			{
+				strConditionName = strFullConditionName;
+			}
+
+			if (strConditionName.length() > 0)
+			{
+				pCondition = unique_ptr<IFStatement::ConditionPair>(new IFStatement::ConditionPair());
+				if (m_mapConditions.count(strConditionName) > 0)
+					pCondition->pCondition = m_mapConditions[strConditionName];
+				else
+				{
+					pCondition->pCondition = new Condition(callback, strConditionName.c_str());
+					m_mapConditions[strConditionName] = pCondition->pCondition;
+				}
+
+				if (found != string::npos)
+				{
+					size_t _param_begin = strFullConditionName.find_first_not_of(' ', found + 1);
+					if (_param_begin != std::string::npos)
+					{
+						size_t _param_end = strFullConditionName.find_last_not_of(" )");
+						if (_param_end != std::string::npos && _param_end > _param_begin + 1)
+							pCondition->lstConditionParam.push_back(make_pair("params_in_JSON", strFullConditionName.substr(_param_begin, _param_end - _param_begin + 1)));
+					}
+				}
+			}
+
+			vector<IFStatement::ActionPair> vectActions;
+			getActionList(callback, *_action_node, vectActions);
+			IFStatement* _IFStatement = new IFStatement(callback, vectActions, pCondition.get(), _action_name, IF);
+			_action_pair.pAction = _IFStatement;
+		}
+		else if (strcmp(_action_node->name(), TAG_NAMES[ELSEIF]) == 0)
+		{
+			const char* _action_name = _action_node->name();
+			_action_pair.pAction = new Action(callback, _action_name, ELSEIF);
+
+			std::string _condition = _action_node->first_attribute(ATTR_NAMES[CONDITION]) == nullptr ? "" : _action_node->first_attribute(ATTR_NAMES[CONDITION])->value();
+			ReplaceDataModel(_condition);
+			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[CONDITION], _condition));
+		}
+		else if (strcmp(_action_node->name(), TAG_NAMES[ELSE]) == 0)
+		{
+			const char* _action_name = _action_node->name();
+			_action_pair.pAction = new Action(callback, _action_name, ELSE);
+		}
+		else if (strcmp(_action_node->name(), TAG_NAMES[FOREACH]) == 0)
+		{
+			vector<LoopStatement::ActionPair> vectActions;
+			getActionList(callback, *_action_node, vectActions);
+
+			const char* _action_name = _action_node->name();
+			_action_pair.pAction = new LoopStatement(callback, vectActions, _action_name, FOREACH);
+
+			std::string _array = _action_node->first_attribute(ATTR_NAMES[ARRAY]) == nullptr ? "" : _action_node->first_attribute(ATTR_NAMES[ARRAY])->value();
+			ReplaceDataModel(_array);
+			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[ARRAY], _array));
+			std::string _index = _action_node->first_attribute(ATTR_NAMES[INDEX]) == nullptr ? "" : _action_node->first_attribute(ATTR_NAMES[INDEX])->value();
+			ReplaceDataModel(_index);
+			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[INDEX], _index));
+			std::string _item = _action_node->first_attribute(ATTR_NAMES[ITEM]) == nullptr ? "" : _action_node->first_attribute(ATTR_NAMES[ITEM])->value();
+			ReplaceDataModel(_item);
+			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[ITEM], _item));
 		}
 		else
 		{
@@ -861,102 +921,122 @@ void CStateMachineImpl::getActionList(BioSys::DNA* callback, const ITCXMLNode& r
 	}
 }
 
-bool CStateMachineImpl::CheckIfTransientState(const ITCXMLNode& root_node)
+bool CStateMachineImpl::CheckIfTransientState(const xml_node<>& root_node)
 {
-	int nTransitionCount = root_node.nChildNode(TAG_NAMES[TRANSITION]);
-
-	for (int i = 0, itItem = 0; i < nTransitionCount; ++i)
+	for (xml_node<>* itTransitionNode = root_node.first_node(TAG_NAMES[TRANSITION]); itTransitionNode; itTransitionNode = itTransitionNode->next_sibling(TAG_NAMES[TRANSITION]))
 	{
-		ITCXMLNode itTransitionNode = root_node.getChildNode(TAG_NAMES[TRANSITION], &itItem);
-
 		// event
-		const char* szEventName = itTransitionNode.getAttribute(ATTR_NAMES[EVENT]);
-		if (szEventName == nullptr || szEventName[0] == '\0')
+		xml_attribute<>* _event_attr = itTransitionNode->first_attribute(ATTR_NAMES[EVENT]);
+		if (_event_attr == nullptr || _event_attr->value()[0] == '\0')
 			return true;
 	}
 	return false;
 }
 
-void CStateMachineImpl::getInvokeList(BioSys::DNA* callback, const ITCXMLNode& root_node, int type, vector<CTransition::ActionPair>& action_pair_list)
+void CStateMachineImpl::getInvokeList(BioSys::DNA* callback, const xml_node<>& root_node, int type, vector<CTransition::ActionPair>& action_pair_list)
 {
-	int _invoke_count = root_node.nChildNode(TAG_NAMES[type]);
-	if (_invoke_count > 0)
+	for (xml_node<>* _invoke = root_node.first_node(TAG_NAMES[type]); _invoke; _invoke = _invoke->next_sibling(TAG_NAMES[type]))
 	{
-		for (int j = 0; j < _invoke_count; j++)
-		{
-			action_pair_list.push_back(CTransition::ActionPair());
-			CTransition::ActionPair& _action_pair = action_pair_list.back();
+		action_pair_list.push_back(CTransition::ActionPair());
+		CTransition::ActionPair& _action_pair = action_pair_list.back();
 
-			const ITCXMLNode& _invoke = root_node.getChildNode(TAG_NAMES[type], j);
-			const char* _id = _invoke.getAttribute(ATTR_NAMES[ID]);
-			const char* _src = _invoke.getAttribute(ATTR_NAMES[SRC]);
-			const char* _autoforward = _invoke.getAttribute(ATTR_NAMES[AUTOFORWARD]);
-			String _src_str;
-			if (_src == nullptr)
+		const char* _id = _invoke->first_attribute(ATTR_NAMES[ID]) == nullptr ? nullptr : _invoke->first_attribute(ATTR_NAMES[ID])->value();
+		const char* _src = _invoke->first_attribute(ATTR_NAMES[SRC]) == nullptr ? nullptr : _invoke->first_attribute(ATTR_NAMES[SRC])->value();
+		const char* _srcexpr = _invoke->first_attribute(ATTR_NAMES[SRCEXPR]) == nullptr ? nullptr : _invoke->first_attribute(ATTR_NAMES[SRCEXPR])->value();
+		const char* _autoforward = _invoke->first_attribute(ATTR_NAMES[AUTOFORWARD])==nullptr ? nullptr : _invoke->first_attribute(ATTR_NAMES[AUTOFORWARD])->value();
+		string _src_str;
+		if (_src == nullptr && _srcexpr == nullptr)
+		{
+			if (_id != nullptr)
 			{
-				if (_id != nullptr)
-				{
-					LOG_E(TAG, "!!! Invalid src. src of invoke with id=\"%s\" in state \"%s\" is null.", _id, root_node.getAttribute(ATTR_NAMES[ID]));
-				}
-				else
-				{
-					LOG_E(TAG, "!!! Invalid src. src of invoke with id=\"unknown\" in state \"%s\" is null.", root_node.getAttribute(ATTR_NAMES[ID]));
-				}
+				LOG_E(TAG, "!!! Invalid src. src of invoke with id=\"%s\" in state \"%s\" is null.", _id, root_node.first_attribute(ATTR_NAMES[ID])->value());
+			}
+			else
+			{
+				LOG_E(TAG, "!!! Invalid src. src of invoke with id=\"unknown\" in state \"%s\" is null.", root_node.first_attribute(ATTR_NAMES[ID])->value());
+			}
+			action_pair_list.pop_back();
+			assert(false);
+		}
+		else if (_srcexpr != nullptr)
+		{
+			_src_str = _srcexpr;
+			ReplaceDataModel(_src_str);
+			_srcexpr = _src_str.data();
+
+		}
+		else
+		{
+			_src_str = _src;
+			ReplaceDataModel(_src_str);
+			_src = _src_str.data();
+
+		}
+		if (_id == nullptr)
+			_id = _src;
+		const char* _action_name = _id;
+		pair<string, int> _action_key = make_pair(_action_name, type);
+		if (m_mapActions.count(_action_key) > 0)
+		{
+			LOG_W(TAG, "Invoke in state \"%s\" with the same id \"%s\", is that right?", root_node.first_attribute(ATTR_NAMES[ID])->value(), _id);
+			_action_pair.pAction = m_mapActions[_action_key];
+		}
+		else
+		{
+			_action_pair.pAction = new Action(callback, _action_name, type);
+			m_mapActions[_action_key] = _action_pair.pAction;
+		}
+		_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[ID], _id));
+		if (_src != nullptr)
+			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[SRC], _src));
+		if (_srcexpr != nullptr)
+			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[SRCEXPR], _srcexpr));
+		if (_autoforward != nullptr)
+			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[AUTOFORWARD], _autoforward));
+		else
+			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[AUTOFORWARD], "true"));
+
+		for (xml_node<>* _param_node = _invoke->first_node(TAG_NAMES[PARAM]); _param_node; _param_node = _param_node->next_sibling(TAG_NAMES[PARAM]))
+		{
+			//if (_param_node.first_attribute(ATTR_NAMES[NAME]) == nullptr || _param_node.first_attribute(ATTR_NAMES[EXPR]) == nullptr)
+			if (_param_node->first_attribute(ATTR_NAMES[NAME]) == nullptr)
+			{
+				LOG_E(TAG, "!!! Invalid parameter. 'invoke' field in state \"%s\" is null.", root_node.parent()->first_attribute(ATTR_NAMES[ID])->value());
 				action_pair_list.pop_back();
 				assert(false);
 			}
-			else
+			else if (_param_node->first_attribute(ATTR_NAMES[EXPR]) == nullptr)
 			{
-				_src_str = _src;
-				ReplaceDataModel(_src_str);
-				_src = _src_str.data();
-
-			}
-			if (_id == nullptr)
-				_id = _src;
-			const char* _action_name = _id;
-			pair<string, int> _action_key = make_pair(_action_name, type);
-			if (m_mapActions.count(_action_key) > 0)
-			{
-				LOG_W(TAG, "Invoke in state \"%s\" with the same id \"%s\", is that right?", root_node.getAttribute(ATTR_NAMES[ID]), _id);
-				_action_pair.pAction = m_mapActions[_action_key];
+				//LOG_E(TAG, "!!! Invalid value of parameter \"%s\". expr of 'invoke' field in state \"%s\" is null.", _param_node.first_attribute(ATTR_NAMES[NAME]), root_node.getParentNode().first_attribute(ATTR_NAMES[ID]));
+				std::string _expr = "";
+				ReplaceDataModel(_expr);
+				_action_pair.lstActionParam.push_back(make_pair(_param_node->first_attribute(ATTR_NAMES[NAME])->value(), _expr));
 			}
 			else
 			{
-				_action_pair.pAction = new Action(callback, _action_name, type);
-				m_mapActions[_action_key] = _action_pair.pAction;
+				std::string _expr = _param_node->first_attribute(ATTR_NAMES[EXPR]) == nullptr ? "" : _param_node->first_attribute(ATTR_NAMES[EXPR])->value();
+				ReplaceDataModel(_expr);
+				_action_pair.lstActionParam.push_back(make_pair(_param_node->first_attribute(ATTR_NAMES[NAME])->value(), _expr));
 			}
-			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[ID], _id));
-			_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[SRC], _src));
-			if (_autoforward != nullptr)
-				_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[AUTOFORWARD], _autoforward));
-			else
-				_action_pair.lstActionParam.push_back(make_pair(ATTR_NAMES[AUTOFORWARD], "true"));
 		}
 	}
 }
 
-bool CStateMachineImpl::CreateDataModel(const ITCXMLNode& xNode, DataModelMap& mapDataModel)
+bool CStateMachineImpl::CreateDataModel(const xml_node<>& xNode, DataModelMap& mapDataModel)
 {
 	vector<int> vectDataID = { DATA_MODEL };
 	for (auto const& nDataID : vectDataID)
 	{
-		int nDataModelCount = xNode.nChildNode(TAG_NAMES[nDataID]);
-
-		if (nDataModelCount <= 0)
-		{
+		const xml_node<>* _data_model_node = xNode.first_node(TAG_NAMES[nDataID]);
+		if (_data_model_node == nullptr)
 			return true;
-		}
-
-		int nDataCount = xNode.getChildNode(TAG_NAMES[nDataID]).nChildNode(TAG_NAMES[DATA]);
-		for (int i = 0; i < nDataCount; ++i)
+		for (xml_node<>* itDataNode = _data_model_node->first_node(TAG_NAMES[DATA]); itDataNode; itDataNode = itDataNode->next_sibling(TAG_NAMES[DATA]))
 		{
-			ITCXMLNode itDataNode = xNode.getChildNode(TAG_NAMES[nDataID]).getChildNode(TAG_NAMES[DATA], i);
-			const char* _data_name = itDataNode.getAttribute(ATTR_NAMES[ID]);
+			const char* _data_name = itDataNode->first_attribute(ATTR_NAMES[ID]) == nullptr ? nullptr : itDataNode->first_attribute(ATTR_NAMES[ID])->value();
 
 			if (_data_name == nullptr)
 			{
-				LOG_E(TAG, "!!! CStateMachineImpl::CreateDataModel() with data name = null in state \"%s\"", xNode.getAttribute(ATTR_NAMES[ID]));
+				LOG_E(TAG, "!!! CStateMachineImpl::CreateDataModel() with data name = null in state \"%s\"", xNode.first_attribute(ATTR_NAMES[ID])->value());
 				assert(false);
 				return false;
 			}
@@ -967,7 +1047,7 @@ bool CStateMachineImpl::CreateDataModel(const ITCXMLNode& xNode, DataModelMap& m
 				//return false;
 				continue;
 			}
-			else if (itDataNode.getAttribute(ATTR_NAMES[EXPR]) == nullptr)
+			else if (itDataNode->first_attribute(ATTR_NAMES[EXPR]) == nullptr)
 			{
 				LOG_E(TAG, "!!! CStateMachineImpl::CreateDataModel() - data name:%s has null expr", _data_name);
 				assert(false);
@@ -975,7 +1055,7 @@ bool CStateMachineImpl::CreateDataModel(const ITCXMLNode& xNode, DataModelMap& m
 			}
 			else
 			{
-				String _expr = itDataNode.getAttribute(ATTR_NAMES[EXPR]);
+				string _expr = itDataNode->first_attribute(ATTR_NAMES[EXPR]) == nullptr ? "" : itDataNode->first_attribute(ATTR_NAMES[EXPR])->value();
 				if (_expr.size() > 2 && _expr[0] == ':' && _expr[1] == ':')
 				{
 					Read(_expr.substr(2), _expr);
@@ -1056,7 +1136,7 @@ void CStateMachineImpl::Deserialize(const char* type, const DynaArray& data, T& 
 }
 
 template<typename T>
-void CStateMachineImpl::Read(const String& name, T& value)
+void CStateMachineImpl::Read(const string& name, T& value)
 {
 	DynaArray _stored_type;
 	DynaArray _buf;

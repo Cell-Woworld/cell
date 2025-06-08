@@ -1,0 +1,70 @@
+syntax = "proto3";
+package TCPsocket;
+
+message Start
+{
+	int32 port = 1;
+	string cert_filename = 2;
+	string key_filename = 3;
+	int32 header_size = 4;
+	map<string,uint64> protocol = 5;
+}
+
+message NewConnection
+{
+	uint64 id = 1;
+}
+
+message Service
+{
+	message Config
+	{
+		uint64 id = 1;
+	}
+
+	message ConnectionClosed
+	{
+	}
+}
+
+message ProtoHeader
+{
+	int32 size = 1;
+}
+
+message ProtoEvent
+{
+	string name = 1;
+	bytes payload = 2;
+}
+
+message RawEvent
+{
+	bytes header	= 1;
+	bytes content	= 2;
+}
+
+message Connect
+{
+	string address = 1;
+	int32 port = 2;
+	int32 header_size = 3;
+	map<string,uint64> protocol = 4;
+	message Result
+	{
+	}
+	message Error
+	{
+		int32  code		= 1;
+		string message	= 2;
+	}
+}
+
+message RawEventReceived
+{
+	RawEvent payload	= 1;
+}
+
+message StartReceive
+{
+}

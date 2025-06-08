@@ -7,9 +7,9 @@ You can use this framework to "DRAW" your code in SCXML. With a little additiona
 Supported OS: Windows/Linux/Mac/Android/iOS
 
 Compiler
-Visual Studio 2019
-g++ 11.1.0
-clang++ 5.0.1
+Visual Studio 2022
+g++ 11.1.0+
+clang++ 5.0.1+
 
 Dependencies:
 1. ThreadPool: https://github.com/Fdhvdu/ThreadPool
@@ -18,7 +18,8 @@ Dependencies:
 4. zlib: https://github.com/madler/zlib
 5. JSON for Modern C++: https://github.com/nlohmann/json
 6. zpp serializer: https://github.com/eyalz800/serializer
-7. Protocol Buffers: https://github.com/protocolbuffers/protobuf
+7. Protocol Buffers v22.2: https://github.com/protocolbuffers/protobuf
+8. socket-cpp: https://github.com/embeddedmz/socket-cpp
 
 Why to release this framework?
 This is my dream that everybody can "DRAW" their code to develop any products in the future. 

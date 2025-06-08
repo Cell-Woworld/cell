@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" binding="early" xmlns:qt="http://www.qt.io/2015/02/scxml-ext" name="Timer" qt:editorversion="4.9.2">
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" binding="early" xmlns:qt="http://www.qt.io/2015/02/scxml-ext" name="WebsocketServer" qt:editorversion="4.9.2">
     <state id="Init">
         <qt:editorinfo geometry="167.76;148.55;-60;-50;120;100" scenegeometry="167.76;148.55;107.76;98.55;120;100"/>
         <onentry>
@@ -18,7 +18,6 @@
         <state id="InitWebsocket">
             <qt:editorinfo geometry="3.65;11.10;-190;-50;237.26;116" scenegeometry="605.34;160.12;415.34;110.12;237.26;116"/>
             <onentry>
-                <qt:editorinfo geometry="-60;-50;0;0;0;0"/>
                 <assign location="Websocket.Start.port" expr="8099"/>
             </onentry>
             <transition type="internal" event="Websocket.Start" target="WaitConnect">
@@ -29,19 +28,14 @@
             <qt:editorinfo geometry="9.20;303.55;-217;-51.07;284.10;117.07" scenegeometry="610.89;452.57;393.89;401.50;284.10;117.07"/>
             <transition type="internal" event="Websocket.NewConnection">
                 <assign location="Websocket.Service.Config.id" expr="::Websocket.NewConnection.id"/>
-                <raise event="Websocket.Service.Config">
-                    <qt:editorinfo geometry="-5.31;37.49;0;0;0;0"/>
-                </raise>
+                <assign location="Websocket.Service.Config.stem_id" expr="::Bio.Cell.uuid"/>
+                <raise event="Websocket.Service.Config"/>
             </transition>
             <transition type="internal" event="Websocket.Service.Config">
                 <assign location="Bio.Cell.ForwardEvent.name" expr="Websocket.Service.Config"/>
-                <assign expr="::encode.Websocket.Service.Config" location="Bio.Cell.ForwardEvent.payload">
-                    <qt:editorinfo geometry="54.69;97.49;0;0;0;0"/>
-                </assign>
+                <assign location="Bio.Cell.ForwardEvent.payload" expr="::encode.Websocket.Service.Config"/>
                 <assign location="Bio.Cell.ForwardEvent.uuid" expr="::return.Bio.Cell.Division"/>
-                <raise event="Bio.Cell.ForwardEvent">
-                    <qt:editorinfo geometry="-46.40;4.32;0;0;0;0"/>
-                </raise>
+                <raise event="Bio.Cell.ForwardEvent"/>
             </transition>
             <onentry>
                 <script>Websocket.Start</script>

@@ -1,8 +1,10 @@
-#include "internal/mRNA.h"
+ï»¿#include "internal/mRNA.h"
 #include <google/protobuf/dynamic_message.h>
 #include <google/protobuf/util/json_util.h>
+#include <google/protobuf/compiler/importer.h>
 #include "internal/utils/cell_utils.h"
 #include <regex>
+#include "nlohmann/json.hpp"
 
 #ifndef VERSION_MAJOR
 #define VERSION_MAJOR 0
@@ -23,16 +25,17 @@
 #define TAG "mRNA"
 
 using namespace google::protobuf;
+using json = nlohmann::json;
 
 USING_BIO_NAMESPACE
 #ifdef __cplusplus
 #ifdef STATIC_API
-extern "C" PUBLIC_API RNA* mRNA_CreateInstance(IBiomolecule* owner)
+extern "C" PUBLIC_API RNA * mRNA_CreateInstance(IBiomolecule * owner)
 {
 	return new mRNA(owner);
 }
 #else
-extern "C" PUBLIC_API RNA* CreateInstance(IBiomolecule* owner)
+extern "C" PUBLIC_API RNA * CreateInstance(IBiomolecule * owner)
 {
 	return new mRNA(owner);
 }
@@ -58,18 +61,48 @@ void mRNA::SaveVersion()
 	WriteValue("Bio.Cell.version.build.mRNA", VERSION_BUILD);
 	WriteValue("Bio.Cell.version.revision.mRNA", (String)VERSION_REVISION);
 	LOG_D(TAG, "version: %s", ReadValue<String>("Bio.Cell.version.mRNA").c_str());
-	const time_t TIME_DIFFERENCE = -8 * 60 * 60;
-	WriteValue("Bio.Cell.version.time.mRNA", (time_t)__TIME_UNIX__ + TIME_DIFFERENCE);
+	const long long TIME_DIFFERENCE = -8 * 60 * 60;
+	WriteValue("Bio.Cell.version.time.mRNA", (long long)__TIME_UNIX__ + TIME_DIFFERENCE);
 }
 
-void mRNA::bind(IBiomolecule* src, void* desc_pool)
+void mRNA::bind(IBiomolecule* src, const char* filename)
 {
-	//LOG_D(TAG, "mRNA<0x%X>::bind(%s)", (unsigned int)(unsigned long long)this, src->full_name().data());
-	const DescriptorPool& _pool = *(DescriptorPool*)desc_pool;
-	databases_.push_back(new DescriptorPoolDatabase(_pool));
-	databases_src_.push_back(src);
-	merged_database_.reset(new MergedDescriptorDatabase(databases_));
-	desc_pool_.reset(new DescriptorPool(merged_database_.get()));
+	if (src != nullptr)
+	{
+		databases_src_.push_back(src);
+	}
+	else if (filename != nullptr)
+	{
+		String _path, _filename;
+		SplitPathName(filename, _path, _filename);
+
+		compiler::DiskSourceTree _proto_source_tree;
+		_proto_source_tree.MapPath("", _path);
+		compiler::Importer _importer(&_proto_source_tree, nullptr);
+		const FileDescriptor* _file_desc = _importer.Import(_filename);
+
+		if (_file_desc)
+		{
+			FileDescriptorProto _fileDescriptorProto;
+			_file_desc->CopyTo(&_fileDescriptorProto);
+			_fileDescriptorProto.set_name(_file_desc->package() + "_" + _file_desc->name());
+			extra_desc_pool_.push_back(Obj<DescriptorPool>(new DescriptorPool()));
+			const FileDescriptor* _file_desc = extra_desc_pool_.back()->BuildFile(_fileDescriptorProto);
+			if (_file_desc != nullptr)
+				databases_.push_back(new DescriptorPoolDatabase(*extra_desc_pool_.back()));
+			else
+			{
+				LOG_E(TAG, "Fail to parsing \"%s\" when AddProto", filename);
+				extra_desc_pool_.pop_back();
+			}
+		}
+		else
+		{
+			LOG_E(TAG, "Fail to AddProto \"%s\"", filename);
+		}
+		merged_database_.reset(new MergedDescriptorDatabase(databases_));
+		desc_pool_.reset(new DescriptorPool(merged_database_.get()));
+	}
 }
 
 void mRNA::unbind(IBiomolecule* src)
@@ -81,22 +114,17 @@ void mRNA::unbind(IBiomolecule* src)
 		{
 			std::swap(databases_src_[i], databases_src_.back());
 			databases_src_.pop_back();
-			std::swap(databases_[i], databases_.back());
-			delete databases_.back();
-			databases_.pop_back();
 		}
 		else
 		{
 			i++;
 		}
 	}
-	merged_database_.reset(new MergedDescriptorDatabase(databases_));
-	desc_pool_.reset(new DescriptorPool(merged_database_.get()));
 }
 
 bool mRNA::fill_model_by_field_name(const String& name, const String& content)
 {
-	const Descriptor* _desc = desc_pool_->FindMessageTypeByName(name);
+	const Descriptor* _desc = FindMessageTypeByName(name);
 	if (_desc == nullptr)
 		return false;
 	//String _content = content;
@@ -118,12 +146,10 @@ bool mRNA::fill_model_by_field_name(const String& name, const String& content)
 bool mRNA::pack(const DynaArray& root_path, const DynaArray& name, DynaArray& payload)
 {
 	// translate via patterns
-	if (desc_pool_ == nullptr)
-		return false;
 	const Descriptor* _desc = nullptr;
 	try
 	{
-		_desc = desc_pool_->FindMessageTypeByName(name.str());
+		_desc = FindMessageTypeByName(name.str());
 		if (_desc == nullptr)
 		{
 			return false;
@@ -196,96 +222,47 @@ bool mRNA::pack(const DynaArray& root_path, const DynaArray& name, DynaArray& pa
 			}
 			break;
 		case FieldDescriptor::TYPE_BOOL:
-			if (_field_desc->is_repeated())
-			{
-				Array<bool> _content = ReadValue<Array<bool>>(_model_name);
-				for (auto _elem : _content)
-				{
-					_reflection->AddBool(_message.get(), _field_desc, _elem);
-				}
-			}
-			else
-			{
-				bool _content = ReadValue<bool>(_model_name);
-				_reflection->SetBool(_message.get(), _field_desc, _content);
-			}
+		{
+			auto _func1 = [_reflection](Message* message, const FieldDescriptor* field_desc, bool elem) {return _reflection->AddBool(message, field_desc, elem); };
+			auto _func2 = [_reflection](Message* message, const FieldDescriptor* field_desc, bool content) {return _reflection->SetBool(message, field_desc, content); };
+			pack_field<bool>(_func1, _func2, _field_desc, _message.get(), _model_name);
 			break;
+		}
 		case FieldDescriptor::TYPE_INT32:
-			if (_field_desc->is_repeated())
-			{
-				Array<int32_t> _content = ReadValue<Array<int32_t>>(_model_name);
-				for (auto _elem : _content)
-				{
-					_reflection->AddInt32(_message.get(), _field_desc, _elem);
-				}
-			}
-			else
-			{
-				int32_t _content = ReadValue<int32_t>(_model_name);
-				_reflection->SetInt32(_message.get(), _field_desc, _content);
-
-			}
+		{
+			auto _func1 = [_reflection](Message* message, const FieldDescriptor* field_desc, int32_t elem) {return _reflection->AddInt32(message, field_desc, elem); };
+			auto _func2 = [_reflection](Message* message, const FieldDescriptor* field_desc, int32_t content) {return _reflection->SetInt32(message, field_desc, content); };
+			pack_field<int32_t>(_func1, _func2, _field_desc, _message.get(), _model_name);
 			break;
+		}
 		case FieldDescriptor::TYPE_UINT32:
-			if (_field_desc->is_repeated())
-			{
-				Array<uint32_t> _content = ReadValue<Array<uint32_t>>(_model_name);
-				for (auto _elem : _content)
-				{
-					_reflection->AddUInt32(_message.get(), _field_desc, _elem);
-				}
-			}
-			else
-			{
-				uint32_t _content = ReadValue<uint32_t>(_model_name);
-				_reflection->SetUInt32(_message.get(), _field_desc, _content);
-			}
+		{
+			auto _func1 = [_reflection](Message* message, const FieldDescriptor* field_desc, uint32_t elem) {return _reflection->AddUInt32(message, field_desc, elem); };
+			auto _func2 = [_reflection](Message* message, const FieldDescriptor* field_desc, uint32_t content) {return _reflection->SetUInt32(message, field_desc, content); };
+			pack_field<uint32_t>(_func1, _func2, _field_desc, _message.get(), _model_name);
 			break;
+		}
 		case FieldDescriptor::TYPE_INT64:
-			if (_field_desc->is_repeated())
-			{
-				Array<int64_t> _content = ReadValue<Array<int64_t>>(_model_name);
-				for (auto _elem : _content)
-				{
-					_reflection->AddInt64(_message.get(), _field_desc, _elem);
-				}
-			}
-			else
-			{
-				int64_t _content = ReadValue<int64_t>(_model_name);
-				_reflection->SetInt64(_message.get(), _field_desc, _content);
-			}
+		{
+			auto _func1 = [_reflection](Message* message, const FieldDescriptor* field_desc, int64_t elem) {return _reflection->AddInt64(message, field_desc, elem); };
+			auto _func2 = [_reflection](Message* message, const FieldDescriptor* field_desc, int64_t content) {return _reflection->SetInt64(message, field_desc, content); };
+			pack_field<long long>(_func1, _func2, _field_desc, _message.get(), _model_name);
 			break;
+		}
 		case FieldDescriptor::TYPE_UINT64:
-			if (_field_desc->is_repeated())
-			{
-				Array<uint64_t> _content = ReadValue<Array<uint64_t>>(_model_name);
-				for (auto _elem : _content)
-				{
-					_reflection->AddUInt64(_message.get(), _field_desc, _elem);
-				}
-			}
-			else
-			{
-				uint64_t _content = ReadValue<uint64_t>(_model_name);
-				_reflection->SetUInt64(_message.get(), _field_desc, _content);
-			}
+		{
+			auto _func1 = [_reflection](Message* message, const FieldDescriptor* field_desc, uint64_t elem) {return _reflection->AddUInt64(message, field_desc, elem); };
+			auto _func2 = [_reflection](Message* message, const FieldDescriptor* field_desc, uint64_t content) {return _reflection->SetUInt64(message, field_desc, content); };
+			pack_field<unsigned long long>(_func1, _func2, _field_desc, _message.get(), _model_name);
 			break;
+		}
 		case FieldDescriptor::TYPE_DOUBLE:
-			if (_field_desc->is_repeated())
-			{
-				Array<double> _content = ReadValue<Array<double>>(_model_name);
-				for (auto _elem : _content)
-				{
-					_reflection->AddDouble(_message.get(), _field_desc, _elem);
-				}
-			}
-			else
-			{
-				double _content = ReadValue<double>(_model_name);
-				_reflection->SetDouble(_message.get(), _field_desc, _content);
-			}
+		{
+			auto _func1 = [_reflection](Message* message, const FieldDescriptor* field_desc, double elem) {return _reflection->AddDouble(message, field_desc, elem); };
+			auto _func2 = [_reflection](Message* message, const FieldDescriptor* field_desc, double content) {return _reflection->SetDouble(message, field_desc, content); };
+			pack_field<double>(_func1, _func2, _field_desc, _message.get(), _model_name);
 			break;
+		}
 		case FieldDescriptor::TYPE_ENUM:
 			if (_field_desc->is_repeated())
 			{
@@ -298,7 +275,7 @@ bool mRNA::pack(const DynaArray& root_path, const DynaArray& name, DynaArray& pa
 					}
 					else
 					{
-						const google::protobuf::EnumValueDescriptor* _enum_value_descriptor = _field_desc->enum_type()->FindValueByName(_elem);
+						const EnumValueDescriptor* _enum_value_descriptor = FindValueByName(name.str(), i, _elem);
 						if (_enum_value_descriptor != nullptr)
 							_reflection->AddEnum(_message.get(), _field_desc, _enum_value_descriptor);
 						else
@@ -315,7 +292,7 @@ bool mRNA::pack(const DynaArray& root_path, const DynaArray& name, DynaArray& pa
 				}
 				else
 				{
-					const google::protobuf::EnumValueDescriptor* _enum_value_descriptor = _field_desc->enum_type()->FindValueByName(_content);
+					const EnumValueDescriptor* _enum_value_descriptor = FindValueByName(name.str(), i, _content);
 					if (_enum_value_descriptor != nullptr)
 						_reflection->SetEnum(_message.get(), _field_desc, _enum_value_descriptor);
 					else
@@ -327,46 +304,88 @@ bool mRNA::pack(const DynaArray& root_path, const DynaArray& name, DynaArray& pa
 		{
 			if (_field_desc->is_repeated())
 			{
-				//try to parse as JSON first
-				String _value = ReadValue<String>(_model_name);
-				if (_value.size() >= 4 && _value.front() == '[' && _value.back() == ']' && _value[1] == '{' && _value[_value.size() - 2] == '}')
+#pragma region RemovingUnknownGarbageOfRepeatedField_Protobuf22_2
+				int _count = _reflection->FieldSize(*_message, _field_desc);
+				if (_count > 0)
 				{
-					// It must be JSON format
-					//std::replace(_value.begin(), _value.end(), ';', ',');
-					Array<String> _content = SplitByString(_value.substr(1,_value.size()-2), "},");
-					for (int i = 0; i < _content.size(); i++)
+					_reflection->ClearField(_message.get(), _field_desc);
+					_count = _reflection->FieldSize(*_message, _field_desc);
+				}
+#pragma endregion RemovingUnknownGarbageOfRepeatedField_Protobuf22_2
+				if (_field_desc->is_map())
+				{
+					::Map<String, String> _content = ReadValue<::Map<String, String>>(_model_name);
+					String sub_msg_name = _field_desc->message_type()->full_name();
+					const Descriptor* _desc = FindMessageTypeByName(sub_msg_name);
+					for (const auto& _elem : _content)
 					{
-						String _elem = (i == _content.size() - 1) ? _content[i] : _content[i] + "}";
 						Message* _sub_message = _reflection->AddMessage(_message.get(), _field_desc, &_message_factory);
-						if (util::JsonStringToMessage(_elem, _sub_message) != util::Status::OK)
+						//_content.insert(std::make_pair(ReadValue<String>(sub_msg_name + ".key"), ReadValue<String>(sub_msg_name + ".value")));
 						{
-							LOG_E(TAG, "mRNA::pack(%s) failed. Invalid JSON content of sub_message %s", _message->GetDescriptor()->full_name().c_str(), _sub_message->GetDescriptor()->full_name().c_str());
+							const FieldDescriptor* _field_desc = _desc->field(0);
+							String _model_name = _desc->field(0)->full_name();
+							WriteValue(_model_name, _elem.first);
+						}
+						{
+							const FieldDescriptor* _field_desc = _desc->field(1);
+							_model_name = _desc->field(1)->full_name();
+							WriteValue(_model_name, _elem.second);
+						}
+
+						DynaArray _payload = "";
+						if (pack(root_path, sub_msg_name, _payload) == false || _sub_message->ParseFromArray(_payload.data(), (int)_payload.size()) == false)
+						{
 							_reflection->RemoveLast(_message.get(), _field_desc);
 						}
 					}
 				}
 				else
 				{
-					Array<String> _content = ReadValue<Array<String>>(_model_name);
-					String sub_msg_name = _field_desc->message_type()->full_name();
-					for (const auto& _elem : _content)
+					//try to parse as JSON first
+					String _value = ReadValue<String>(_model_name);
+					if (_value.size() >= 4 && _value.front() == '[' && _value.back() == ']' && _value[1] == '{' && _value[_value.size() - 2] == '}')
 					{
-						Message* _sub_message = _reflection->AddMessage(_message.get(), _field_desc, &_message_factory);
-						if (_sub_message->ParseFromString(_elem) == false)
+						// It must be JSON format
+						//std::replace(_value.begin(), _value.end(), ';', ',');
+						Array<String> _content = SplitByString(_value.substr(1, _value.size() - 2), "},");
+						for (int i = 0; i < _content.size(); i++)
 						{
-							if (_elem.front() == '[' && _elem.back() == ']')
+							String _elem = (i == _content.size() - 1) ? _content[i] : _content[i] + "}";
+							Message* _sub_message = _reflection->AddMessage(_message.get(), _field_desc, &_message_factory);
+							if (!util::JsonStringToMessage(_elem, _sub_message).ok())
 							{
-								DynaArray _payload = "";
-								if (fill_model_by_field_name(sub_msg_name, _elem.substr(1, _elem.size() - 2)) == false
-									|| pack(root_path, sub_msg_name, _payload) == false
-									|| _sub_message->ParseFromArray(_payload.data(), (int)_payload.size()) == false)
+								LOG_E(TAG, "mRNA::pack(%s) failed. Invalid JSON content of sub_message %s. Attention! Don't use \"_\" in field name.", _message->GetDescriptor()->full_name().c_str(), _sub_message->GetDescriptor()->full_name().c_str());
+								_reflection->RemoveLast(_message.get(), _field_desc);
+							}
+						}
+#ifdef _DEBUG
+						_count = _reflection->FieldSize(*_message, _field_desc);
+						assert(_count == _content.size());
+#endif
+					}
+					else
+					{
+						Array<String> _content = ReadValue<Array<String>>(_model_name);
+						String sub_msg_name = _field_desc->message_type()->full_name();
+						for (const auto& _elem : _content)
+						{
+							Message* _sub_message = _reflection->AddMessage(_message.get(), _field_desc, &_message_factory);
+							if (_sub_message->ParseFromString(_elem) == false)
+							{
+								if (_elem.front() == '[' && _elem.back() == ']')
+								{
+									DynaArray _payload = "";
+									if (fill_model_by_field_name(sub_msg_name, _elem.substr(1, _elem.size() - 2)) == false
+										|| pack(root_path, sub_msg_name, _payload) == false
+										|| _sub_message->ParseFromArray(_payload.data(), (int)_payload.size()) == false)
+									{
+										_reflection->RemoveLast(_message.get(), _field_desc);
+									}
+								}
+								else
 								{
 									_reflection->RemoveLast(_message.get(), _field_desc);
 								}
-							}
-							else
-							{
-								_reflection->RemoveLast(_message.get(), _field_desc);
 							}
 						}
 					}
@@ -380,7 +399,7 @@ bool mRNA::pack(const DynaArray& root_path, const DynaArray& name, DynaArray& pa
 				if (_content != "" && _sub_message->ParseFromString(_content) == true)
 					break;
 				// JSON format
-				if (util::JsonStringToMessage(_content, _sub_message) == util::Status::OK)
+				if (util::JsonStringToMessage(_content, _sub_message).ok())
 					break;
 
 				String sub_msg_name = _field_desc->message_type()->full_name();
@@ -403,19 +422,46 @@ bool mRNA::pack(const DynaArray& root_path, const DynaArray& name, DynaArray& pa
 	return true;
 }
 
-#define unpack_field(type, func1, func2) { \
-	if (_field_desc->is_repeated()) { \
-		int _count = _reflection->FieldSize(*_message, _field_desc); \
-		Array<type> _content;	\
-		for (int i = 0; i < _count; i++) \
-		{ \
-			_content.push_back(func1(*_message, _field_desc, i)); \
-		}; \
-		WriteValue(_model_name, _content, true); \
-	} else { \
-		WriteValue(_model_name, func2(*_message, _field_desc), true); \
-	} \
-}\
+template <typename T>
+void mRNA::pack_field(
+	std::function<void(Message*, const FieldDescriptor*, T)> func1,
+	std::function<void(Message*, const FieldDescriptor*, T)> func2,
+	const FieldDescriptor* field_desc, Message* message, const String& model_name)
+{
+	if (field_desc->is_repeated())
+	{
+		Array<T> _content = ReadValue<Array<T>>(model_name);
+		for (auto elem : _content)
+		{
+			func1(message, field_desc, elem);
+		}
+	}
+	else
+	{
+		T _content = ReadValue<T>(model_name);
+		func2(message, field_desc, _content);
+	}
+};
+
+template <typename T>
+void mRNA::unpack_field(
+	std::function<T(const Message&, const FieldDescriptor*, int)> func1,
+	std::function<T(const Message&, const FieldDescriptor*)> func2,
+	const FieldDescriptor* field_desc, const Reflection* reflection, const Message* message, const String& model_name)
+{
+	if (field_desc->is_repeated()) {
+		int _count = reflection->FieldSize(*message, field_desc);
+		Array<T> _content;
+		for (int i = 0; i < _count; i++)
+		{
+			_content.push_back(func1(*message, field_desc, i));
+		};
+		WriteValue(model_name, _content, true);
+	}
+	else {
+		WriteValue(model_name, func2(*message, field_desc), true);
+	}
+};
 
 bool mRNA::unpack(const DynaArray& name, const DynaArray& payload, const DynaArray& field_name)
 {
@@ -423,14 +469,12 @@ bool mRNA::unpack(const DynaArray& name, const DynaArray& payload, const DynaArr
 		return true;
 
 	// translate via patterns
-	if (desc_pool_ == nullptr)
-		return true;
-	const Descriptor* _desc = desc_pool_->FindMessageTypeByName(name.str());
+	const Descriptor* _desc = FindMessageTypeByName(name.str());
 	if (_desc == nullptr)
 	{
 		if (payload.size() > 0)
 		{
-			LOG_W(TAG, "mRNA::unpack() doesn't find %s. Fail to unpack()!", name.data());
+			LOG_D(TAG, "mRNA::unpack() doesn't find %s. Foward to next unpack()!", name.data());
 		}
 		return true;		// it must be "true"
 	}
@@ -446,6 +490,8 @@ bool mRNA::unpack(const DynaArray& name, const DynaArray& payload, const DynaArr
 	if (_message->ParseFromArray(payload.data(), (int)payload.size()) == false)
 		return false;
 
+	WriteValue(String("encode.") + name.str(), payload.str());
+
 	const Reflection* _reflection = _message->GetReflection();
 	String _path = "";
 	if (field_name != "")
@@ -456,131 +502,17 @@ bool mRNA::unpack(const DynaArray& name, const DynaArray& payload, const DynaArr
 	{
 		_path = name.str();
 	}
+	nlohmann::json _payload = nlohmann::json::object();
 	for (int i = 0; i < _desc->field_count(); i++)
 	{
 		const FieldDescriptor* _field_desc = _desc->field(i);
-		String _model_name = _path + "." + _desc->field(i)->name();
+		String _field_name = _desc->field(i)->name();
+		String _model_name = _path + "." + _field_name;
 
-		switch (_field_desc->type())
-		{
-		case FieldDescriptor::TYPE_BYTES:
-			unpack_field(String, _reflection->GetRepeatedString, _reflection->GetString);
-			break;
-		case FieldDescriptor::TYPE_STRING:
-			if (_field_desc->is_repeated())
-			{
-				int _count = _reflection->FieldSize(*_message, _field_desc); 
-				Array<String> _content;
-				for (int i = 0; i < _count; i++) 
-				{
-					String _scratch;
-					const String& _string_content = _reflection->GetRepeatedStringReference(*_message, _field_desc, i, &_scratch);
-					size_t first_char_pos = _string_content.find_first_not_of(" \r\n\t");
-					size_t last_char_pos = _string_content.find_last_not_of(" \r\n\t");
-					if (_string_content.size() < 2
-						|| _string_content[first_char_pos] == '[' && _string_content[last_char_pos] == ']'
-						|| _string_content[first_char_pos] == '{' && _string_content[last_char_pos] == '}')
-						_content.push_back(_string_content);
-					else
-					{
-						if (_string_content.front() == '"' && _string_content.back() == '"')
-							_content.push_back(String("\"") + std::regex_replace(_string_content.substr(1, _string_content.size() - 2), std::regex("(?!.*\\\")^.*\""), u8"¡¨") + "\"");
-						else
-							_content.push_back(std::regex_replace(_string_content, std::regex("(?!.*\\\")^.*\""), u8"¡¨"));
-					}
-				}; 
-				WriteValue(_model_name, _content, true); 
-			}
-			else
-			{
-				String _scratch;
-				const String& _string_content = _reflection->GetStringReference(*_message, _field_desc, &_scratch);
-				size_t first_char_pos = _string_content.find_first_not_of(" \r\n\t");
-				size_t last_char_pos = _string_content.find_last_not_of(" \r\n\t");
-				if (_string_content.size() < 2
-					|| _string_content[first_char_pos] == '[' && _string_content[last_char_pos] == ']'
-					|| _string_content[first_char_pos] == '{' && _string_content[last_char_pos] == '}')
-					WriteValue(_model_name, _string_content, true);
-				else {
-					if (_string_content.front() == '"' && _string_content.back() == '"')
-						WriteValue(_model_name, String("\"") + std::regex_replace(_string_content.substr(1, _string_content.size() - 2), std::regex("(?!.*\\\")^.*\""), u8"¡¨") + "\"", true);
-					else
-						WriteValue(_model_name, std::regex_replace(_string_content, std::regex("(?!.*\\\")^.*\""), u8"¡¨"), true);
-				}
-			}
-			break;
-		case FieldDescriptor::TYPE_BOOL:
-			unpack_field(bool, _reflection->GetRepeatedBool, _reflection->GetBool);
-			break;
-		case FieldDescriptor::TYPE_INT32:
-			unpack_field(int32_t, _reflection->GetRepeatedInt32, _reflection->GetInt32);
-			break;
-		case FieldDescriptor::TYPE_UINT32:
-			unpack_field(uint32_t, _reflection->GetRepeatedUInt32, _reflection->GetUInt32);
-			break;
-		case FieldDescriptor::TYPE_INT64:
-			unpack_field(int64_t, _reflection->GetRepeatedInt64, _reflection->GetInt64);
-			break;
-		case FieldDescriptor::TYPE_UINT64:
-			unpack_field(uint64_t, _reflection->GetRepeatedUInt64, _reflection->GetUInt64);
-			break;
-		case FieldDescriptor::TYPE_DOUBLE:
-			unpack_field(double, _reflection->GetRepeatedDouble, _reflection->GetDouble);
-			break;
-		case FieldDescriptor::TYPE_ENUM:
-		{
-			//unpack_field(int, _reflection->GetRepeatedEnumValue, _reflection->GetEnumValue);
-			if (_field_desc->is_repeated()) {
-				int _count = _reflection->FieldSize(*_message, _field_desc);
-				Array<String> _content;
-				Array<int> _value;
-				for (int i = 0; i < _count; i++)
-				{
-					_content.push_back(_reflection->GetRepeatedEnum(*_message, _field_desc, i)->name());
-					_value.push_back(_reflection->GetRepeatedEnum(*_message, _field_desc, i)->number());
-				}
-				WriteValue(_model_name, _content, true);
-				WriteValue(_model_name+".value", _value, true);
-			}
-			else {
-				WriteValue(_model_name, _reflection->GetEnum(*_message, _field_desc)->name(), true);
-				WriteValue(_model_name+".value", _reflection->GetEnum(*_message, _field_desc)->number(), true);
-			}
-
-		}
-			break;
-		case FieldDescriptor::TYPE_MESSAGE:
-			if (_field_desc->is_repeated())
-			{
-				int _count = _reflection->FieldSize(*_message, _field_desc);
-				if (_field_desc->is_map())
-				{
-					::Map<String, String> _content;
-					String sub_msg_name = _field_desc->message_type()->full_name();
-					for (int i = 0; i < _count; i++)
-					{
-						unpack(sub_msg_name, _reflection->GetRepeatedMessage(*_message, _field_desc, i).SerializeAsString());
-						_content.insert(std::make_pair(ReadValue<String>(sub_msg_name+".key"), ReadValue<String>(sub_msg_name + ".value")));
-					}
-					WriteValue(_model_name, _content, true);
-				}
-				else
-				{
-					Array<String> _content;
-					for (int i = 0; i < _count; i++)
-						_content.push_back(_reflection->GetRepeatedMessage(*_message, _field_desc, i).SerializeAsString());
-					WriteValue(_model_name, _content, true);
-				}
-			}
-			else
-			{
-				WriteValue(_model_name, _reflection->GetMessage(*_message, _field_desc).SerializeAsString());
-			}
-			break;
-		default:
-			break;
-		}
+		WriteModelByField(_field_desc, _reflection, _message.get(), _model_name);
+		_payload[_field_name] = ReadValue<String>(_model_name);
 	}
+	WriteValue("@json." + _path, _payload);
 	return true;
 }
 
@@ -591,7 +523,7 @@ bool mRNA::packFromPacket(const String& root_path, Obj<Message>& message, Set<St
 	String _content = ReadValue<String>(_model_name);
 	if (_content == "")
 		return false;
-	if  (message->ParseFromString(_content) == true)
+	if (message->ParseFromString(_content) == true)
 	{
 		Remove(_model_name);
 		return true;
@@ -599,14 +531,59 @@ bool mRNA::packFromPacket(const String& root_path, Obj<Message>& message, Set<St
 	// JSON format
 	RetrieveBinaryData(_content, _desc->full_name(), bin_field_set);
 	auto _status = util::JsonStringToMessage(_content, message.get());
-	if (_status == util::Status::OK)
+	if (_status.ok())
 	{
 		Remove(_model_name);
 		return (bin_field_set.size() == 0);
 	}
 	else
 	{
-		LOG_W(TAG, "unresolved packet \"%s\" with payload: %s, error code=%d, message=%s", _desc->full_name().c_str(), _content.c_str(), _status.code(), _status.message().data());
+		LOG_D(TAG, "unresolved packet \"%s\" with payload: %s, error code=%d, message=%s", _desc->full_name().c_str(), _content.c_str(), _status.code(), _status.message().data());
+#ifdef PROTOBUF_v22
+		if (_status.code() == absl::StatusCode::kInvalidArgument)
+#else
+		if (_status.code() == util::error::INVALID_ARGUMENT)
+#endif
+		{	// retrieve data from JSON to models
+			nlohmann::json _root;
+			try
+			{
+				_root = nlohmann::json::parse(_content);
+				for (auto _obj : _root.items())
+				{
+					String _key = _desc->full_name() + "." + _obj.key();
+					switch (_obj.value().type())
+					{
+					case nlohmann::json::value_t::number_integer:
+						WriteValue(_key, _obj.value().get<int>());
+						break;
+					case nlohmann::json::value_t::number_unsigned:
+						WriteValue(_key, _obj.value().get<unsigned int>());
+						break;
+					case nlohmann::json::value_t::number_float:
+						WriteValue(_key, _obj.value().get<double>());
+						break;
+					case nlohmann::json::value_t::string:
+						WriteValue(_key, _obj.value().get<String>());
+						break;
+					case nlohmann::json::value_t::boolean:
+						WriteValue(_key, _obj.value().get<bool>());
+						break;
+					case nlohmann::json::value_t::array:
+					case nlohmann::json::value_t::object:
+						WriteValue(_key, _obj.value().dump());
+						break;
+					default:
+						break;
+					}
+				}
+			}
+			catch (const std::exception& e)
+			{
+				LOG_E(TAG, "Error when parsing \"%s\" as JSON, message=%s", _content.c_str(), e.what());
+			}
+			return false;
+		}
 		return false;
 	}
 }
@@ -659,7 +636,7 @@ void mRNA::RetrieveBinaryData(String& target, const String& name, Set<String>& b
 			const std::regex EVALUABLE_EXPR("^(::\\(::)[\\w.]+\\)$");
 			if (std::regex_match(_value, EVALUABLE_EXPR))
 			{
-				Clone(_key, _value.substr(sizeof("::(::") - 1, _value.size()-sizeof("::(::)") + 1));
+				Clone(_key, _value.substr(sizeof("::(::") - 1, _value.size() - sizeof("::(::)") + 1));
 				bin_field_set.insert(_key);
 				_bin_field_list.push_back(obj.key());
 			}
@@ -679,9 +656,7 @@ void mRNA::assign(const DynaArray& name)
 	Array<String> _path = ReadValue<Array<String>>(name.str() + ".path");
 	String _value = ReadValue<String>(name.str() + ".value");
 	// translate via patterns
-	if (desc_pool_ == nullptr)
-		return;
-	const Descriptor* _desc = desc_pool_->FindMessageTypeByName(_message_name);
+	const Descriptor* _desc = FindMessageTypeByName(_message_name);
 	if (_desc == nullptr)
 	{
 		LOG_E(TAG, "mRNA::assign(%s) failed. Doesn't find message %s.", _model_name.c_str(), _message_name.c_str());
@@ -700,7 +675,7 @@ void mRNA::assign(const DynaArray& name)
 	}
 
 	String _submsg_name = _field_desc->message_type()->full_name();
-	const Descriptor* _submsg_desc = desc_pool_->FindMessageTypeByName(_submsg_name);
+	const Descriptor* _submsg_desc = FindMessageTypeByName(_submsg_name);
 	DynamicMessageFactory _message_factory;
 	const Message* _submsg_proto = _message_factory.GetPrototype(_submsg_desc);
 	Obj<Message> _submsg = Obj<Message>(_submsg_proto->New());
@@ -752,11 +727,12 @@ void mRNA::assignValue(Message* message, DynamicMessageFactory& message_factory,
 	const Reflection* _reflection = message->GetReflection();
 	Message* _current_message = message;
 	const FieldDescriptor* _current_field_desc = field_desc;
+	int _index = 0;
 	for (int i = 1; i < path.size(); i++)
 	{
 		if (is_number(path[i]))
 		{
-			int _index = stoi(path[i]);
+			_index = stoi(path[i]);
 			int _count = _reflection->FieldSize(*_current_message, _current_field_desc);
 			if (_index >= _count)
 			{
@@ -770,6 +746,7 @@ void mRNA::assignValue(Message* message, DynamicMessageFactory& message_factory,
 		}
 		else
 		{
+			_index = i;
 			_current_field_desc = _current_message->GetDescriptor()->FindFieldByName(path[i]);
 			if (i < path.size() - 1 && _current_field_desc->type() == FieldDescriptor::TYPE_MESSAGE)
 			{
@@ -834,11 +811,11 @@ void mRNA::assignValue(Message* message, DynamicMessageFactory& message_factory,
 	case FieldDescriptor::TYPE_UINT64:
 		if (_current_field_desc->is_repeated())
 		{
-			_reflection->AddUInt64(_current_message, _current_field_desc, std::stoll(value));
+			_reflection->AddUInt64(_current_message, _current_field_desc, (uint64_t)std::stoull(value));
 		}
 		else
 		{
-			_reflection->SetUInt64(_current_message, _current_field_desc, std::stoll(value));
+			_reflection->SetUInt64(_current_message, _current_field_desc, (uint64_t)std::stoull(value));
 		}
 		break;
 	case FieldDescriptor::TYPE_DOUBLE:
@@ -860,7 +837,7 @@ void mRNA::assignValue(Message* message, DynamicMessageFactory& message_factory,
 			}
 			else
 			{
-				const google::protobuf::EnumValueDescriptor* _enum_value_descriptor = _current_field_desc->enum_type()->FindValueByName(value);
+				const EnumValueDescriptor* _enum_value_descriptor = FindValueByName(message->GetDescriptor()->full_name(), _index, value);
 				if (_enum_value_descriptor != nullptr)
 					_reflection->AddEnum(_current_message, _current_field_desc, _enum_value_descriptor);
 				else
@@ -875,7 +852,7 @@ void mRNA::assignValue(Message* message, DynamicMessageFactory& message_factory,
 			}
 			else
 			{
-				const google::protobuf::EnumValueDescriptor* _enum_value_descriptor = _current_field_desc->enum_type()->FindValueByName(value);
+				const EnumValueDescriptor* _enum_value_descriptor = FindValueByName(message->GetDescriptor()->full_name(), _index, value);
 				if (_enum_value_descriptor != nullptr)
 					_reflection->SetEnum(_current_message, _current_field_desc, _enum_value_descriptor);
 				else
@@ -889,9 +866,9 @@ void mRNA::assignValue(Message* message, DynamicMessageFactory& message_factory,
 		{
 			Message* _new_message = _reflection->AddMessage(_current_message, _current_field_desc, &message_factory);
 			// It must be JSON format
-			if (util::JsonStringToMessage(value, _new_message) != util::Status::OK)
+			if (!util::JsonStringToMessage(value, _new_message).ok())
 			{
-				LOG_E(TAG, "mRNA::assign(%s) failed. Invalid JSON content of message %s", message->GetDescriptor()->full_name().c_str(), _new_message->GetDescriptor()->full_name().c_str());
+				LOG_E(TAG, "mRNA::assign(%s) failed. Invalid JSON content of message %s. Attention! Don't use \"_\" in field name.", message->GetDescriptor()->full_name().c_str(), _new_message->GetDescriptor()->full_name().c_str());
 				return;
 			}
 		}
@@ -899,9 +876,9 @@ void mRNA::assignValue(Message* message, DynamicMessageFactory& message_factory,
 		{
 			Message* _new_message = _reflection->MutableMessage(message, _current_field_desc, &message_factory);
 			// It must be JSON format
-			if (util::JsonStringToMessage(value, _new_message) != util::Status::OK)
+			if (!util::JsonStringToMessage(value, _new_message).ok())
 			{
-				LOG_E(TAG, "mRNA::assign(%s) failed. Invalid JSON content of _current_message %s", message->GetDescriptor()->full_name().c_str(), _new_message->GetDescriptor()->full_name().c_str());
+				LOG_E(TAG, "mRNA::assign(%s) failed. Invalid JSON content of _current_message %s. Attention! Don't use \"_\" in field name.", message->GetDescriptor()->full_name().c_str(), _new_message->GetDescriptor()->full_name().c_str());
 				return;
 			}
 		}
@@ -915,9 +892,7 @@ void mRNA::assignValue(Message* message, DynamicMessageFactory& message_factory,
 bool mRNA::decompose(const DynaArray& name, const DynaArray& payload, const DynaArray& field_name)
 {
 	// translate via patterns
-	if (desc_pool_ == nullptr)
-		return false;
-	const Descriptor* _desc = desc_pool_->FindMessageTypeByName(name.str());
+	const Descriptor* _desc = FindMessageTypeByName(name.str());
 	if (_desc == nullptr)
 	{
 		LOG_W(TAG, "mRNA::decompose() schema of message \"%s\" not found", name.data());
@@ -925,7 +900,7 @@ bool mRNA::decompose(const DynaArray& name, const DynaArray& payload, const Dyna
 	}
 
 	const FieldDescriptor* _field_desc = _desc->FindFieldByName(field_name.str());
-	if (_field_desc->type() != FieldDescriptor::TYPE_MESSAGE)
+	if (_field_desc == nullptr || _field_desc->type() != FieldDescriptor::TYPE_MESSAGE)
 		return false;
 	else
 		return unpack(_field_desc->message_type()->full_name(), payload, _field_desc->full_name());
@@ -944,4 +919,206 @@ Array<String>  mRNA::SplitByString(const String& input, const String& separator)
 	}
 	output.push_back(input.substr(begin, end));
 	return output;
+}
+
+void mRNA::WriteModelByField(const FieldDescriptor* field_desc, const Reflection* reflection, const Message* message, const String& model_name)
+{
+	switch (field_desc->type())
+	{
+	case FieldDescriptor::TYPE_BYTES:
+	{
+		auto _func1 = [reflection](const Message& message, const FieldDescriptor* field_desc, int i) {return reflection->GetRepeatedString(message, field_desc, i); };
+		auto _func2 = [reflection](const Message& message, const FieldDescriptor* field_desc) {return reflection->GetString(message, field_desc); };
+		unpack_field<String>(_func1, _func2, field_desc, reflection, message, model_name);
+		break;
+	}
+	case FieldDescriptor::TYPE_STRING:
+		if (field_desc->is_repeated())
+		{
+			int _count = reflection->FieldSize(*message, field_desc);
+			Array<String> _content;
+			for (int i = 0; i < _count; i++)
+			{
+				String _scratch;
+				const String& _string_content = reflection->GetRepeatedStringReference(*message, field_desc, i, &_scratch);
+				size_t first_char_pos = _string_content.find_first_not_of(" \r\n\t");
+				size_t last_char_pos = _string_content.find_last_not_of(" \r\n\t");
+				if (_string_content.size() < 2
+					|| _string_content[first_char_pos] == '[' && _string_content[last_char_pos] == ']'
+					|| _string_content[first_char_pos] == '{' && _string_content[last_char_pos] == '}')
+					_content.push_back(_string_content);
+				else
+				{
+					if (_string_content.front() == '"' && _string_content.back() == '"')
+						_content.push_back(String("\"") + std::regex_replace(_string_content.substr(1, _string_content.size() - 2), std::regex("(?!.*\\\")^.*\""), u8"â€") + "\"");
+					else
+						_content.push_back(std::regex_replace(_string_content, std::regex("(?!.*\\\")^.*\""), u8"â€"));
+				}
+			};
+			WriteValue(model_name, _content, true);
+		}
+		else
+		{
+			String _scratch;
+			const String& _string_content = reflection->GetStringReference(*message, field_desc, &_scratch);
+			size_t first_char_pos = _string_content.find_first_not_of(" \r\n\t");
+			size_t last_char_pos = _string_content.find_last_not_of(" \r\n\t");
+			if (_string_content.size() < 2
+				|| _string_content[first_char_pos] == '[' && _string_content[last_char_pos] == ']'
+				|| _string_content[first_char_pos] == '{' && _string_content[last_char_pos] == '}')
+				WriteValue(model_name, _string_content, true);
+			else {
+				if (_string_content.front() == '"' && _string_content.back() == '"')
+					WriteValue(model_name, String("\"") + std::regex_replace(_string_content.substr(1, _string_content.size() - 2), std::regex("(?!.*\\\")^.*\""), u8"â€") + "\"", true);
+				else
+					WriteValue(model_name, std::regex_replace(_string_content, std::regex("(?!.*\\\")^.*\""), u8"â€"), true);
+			}
+		}
+		break;
+	case FieldDescriptor::TYPE_BOOL:
+	{
+		auto _func1 = [reflection](const Message& message, const FieldDescriptor* field_desc, int i) {return reflection->GetRepeatedBool(message, field_desc, i); };
+		auto _func2 = [reflection](const Message& message, const FieldDescriptor* field_desc) {return reflection->GetBool(message, field_desc); };
+		unpack_field<bool>(_func1, _func2, field_desc, reflection, message, model_name);
+		break;
+	}
+	case FieldDescriptor::TYPE_INT32:
+	{
+		auto _func1 = [reflection](const Message& message, const FieldDescriptor* field_desc, int i) {return reflection->GetRepeatedInt32(message, field_desc, i); };
+		auto _func2 = [reflection](const Message& message, const FieldDescriptor* field_desc) {return reflection->GetInt32(message, field_desc); };
+		unpack_field<int32_t>(_func1, _func2, field_desc, reflection, message, model_name);
+		break;
+	}
+	case FieldDescriptor::TYPE_UINT32:
+	{
+		auto _func1 = [reflection](const Message& message, const FieldDescriptor* field_desc, int i) {return reflection->GetRepeatedUInt32(message, field_desc, i); };
+		auto _func2 = [reflection](const Message& message, const FieldDescriptor* field_desc) {return reflection->GetUInt32(message, field_desc); };
+		unpack_field<uint32_t>(_func1, _func2, field_desc, reflection, message, model_name);
+		break;
+	}
+	case FieldDescriptor::TYPE_INT64:
+	{
+		auto _func1 = [reflection](const Message& message, const FieldDescriptor* field_desc, int i) {return reflection->GetRepeatedInt64(message, field_desc, i); };
+		auto _func2 = [reflection](const Message& message, const FieldDescriptor* field_desc) {return reflection->GetInt64(message, field_desc); };
+		unpack_field<long long>(_func1, _func2, field_desc, reflection, message, model_name);
+		break;
+	}
+	case FieldDescriptor::TYPE_UINT64:
+	{
+		auto _func1 = [reflection](const Message& message, const FieldDescriptor* field_desc, int i) {return reflection->GetRepeatedUInt64(message, field_desc, i); };
+		auto _func2 = [reflection](const Message& message, const FieldDescriptor* field_desc) {return reflection->GetUInt64(message, field_desc); };
+		unpack_field<unsigned long long>(_func1, _func2, field_desc, reflection, message, model_name);
+		break;
+	}
+	case FieldDescriptor::TYPE_DOUBLE:
+	{
+		auto _func1 = [reflection](const Message& message, const FieldDescriptor* field_desc, int i) {return reflection->GetRepeatedDouble(message, field_desc, i); };
+		auto _func2 = [reflection](const Message& message, const FieldDescriptor* field_desc) {return reflection->GetDouble(message, field_desc); };
+		unpack_field<double>(_func1, _func2, field_desc, reflection, message, model_name);
+		break;
+	}
+	case FieldDescriptor::TYPE_ENUM:
+	{
+		//unpack_field(int, reflection->GetRepeatedEnumValue, reflection->GetEnumValue);
+		if (field_desc->is_repeated()) {
+			int _count = reflection->FieldSize(*message, field_desc);
+			Array<String> _content;
+			Array<int> _value;
+			for (int i = 0; i < _count; i++)
+			{
+				_content.push_back(reflection->GetRepeatedEnum(*message, field_desc, i)->name());
+				_value.push_back(reflection->GetRepeatedEnum(*message, field_desc, i)->number());
+			}
+			WriteValue(model_name, _content, true);
+			WriteValue(model_name + ".value", _value, true);
+		}
+		else {
+			WriteValue(model_name, reflection->GetEnum(*message, field_desc)->name(), true);
+			WriteValue(model_name + ".value", reflection->GetEnum(*message, field_desc)->number(), true);
+		}
+		break;
+	}
+	case FieldDescriptor::TYPE_MESSAGE:
+		if (field_desc->is_repeated())
+		{
+			int _count = reflection->FieldSize(*message, field_desc);
+			if (field_desc->is_map())
+			{
+				::Map<String, String> _content;
+				String sub_msg_name = field_desc->message_type()->full_name();
+				for (int i = 0; i < _count; i++)
+				{
+					unpack(sub_msg_name, reflection->GetRepeatedMessage(*message, field_desc, i).SerializeAsString());
+					_content.insert(std::make_pair(ReadValue<String>(sub_msg_name + ".key"), ReadValue<String>(sub_msg_name + ".value")));
+				}
+				WriteValue(model_name, _content, true);
+			}
+			else
+			{
+				Array<String> _content;
+				for (int i = 0; i < _count; i++)
+					_content.push_back(reflection->GetRepeatedMessage(*message, field_desc, i).SerializeAsString());
+				WriteValue(model_name, _content, true);
+			}
+		}
+		else
+		{
+			WriteValue(model_name, reflection->GetMessage(*message, field_desc).SerializeAsString());
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+void mRNA::SplitPathName(const String& full_filename, String& path, String& filename)
+{
+	String _full_filename = full_filename;
+	std::replace(_full_filename.begin(), _full_filename.end(), '\\', '/');
+	size_t _start_pos = _full_filename.rfind('/');
+	size_t _end_pos = _full_filename.rfind(".scxml");
+	if (_start_pos == String::npos)
+	{
+		filename = _full_filename.substr(0, _end_pos);
+		path = "./";
+	}
+	else
+	{
+		filename = _full_filename.substr(_start_pos + 1, _end_pos - _start_pos - 1);
+		path = _full_filename.substr(0, _start_pos + 1);
+	}
+}
+
+const Descriptor* mRNA::FindMessageTypeByName(const String& name)
+{
+	const Descriptor* _desc = nullptr;
+	for (int i = 0; i < databases_src_.size() && _desc == nullptr; i++)
+	{
+		_desc = (const Descriptor*)databases_src_[i]->FindMessageTypeByName(name.c_str());
+	}
+	if (_desc == nullptr && desc_pool_ != nullptr)
+		_desc = desc_pool_->FindMessageTypeByName(name);
+	return _desc;
+}
+
+const EnumValueDescriptor* mRNA::FindValueByName(const String& msg_name, int index, const String& name)
+{
+	const EnumValueDescriptor* _ret_val = nullptr;
+	for (int i = 0; i < databases_src_.size() && _ret_val == nullptr; i++)
+	{
+		_ret_val = (EnumValueDescriptor*)databases_src_[i]->FindValueByName(msg_name.c_str(), index, name.c_str());
+	}
+	if (_ret_val == nullptr && desc_pool_ != nullptr)
+	{
+		const Descriptor* _desc = desc_pool_->FindMessageTypeByName(msg_name);
+		if (_desc != nullptr)
+		{
+			const FieldDescriptor* _field_desc = _desc->field(index);
+			if (_field_desc != nullptr && _field_desc->type() == FieldDescriptor::TYPE_ENUM)
+			{
+				_ret_val = _field_desc->enum_type()->FindValueByName(name);
+			}
+		}
+	}
+	return _ret_val;
 }

@@ -188,6 +188,7 @@
       <EnableUAC>false</EnableUAC>
       <AdditionalOptions>/DYNAMICBASE StateMachine.lib XMLParser.lib %(AdditionalOptions)</AdditionalOptions>
       <AdditionalLibraryDirectories>$(OutDir);$(SolutionDir)..\lib\$(PlatformTarget)\$(Configuration)\</AdditionalLibraryDirectories>
+      <StackReserveSize>0x10000000</StackReserveSize>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='StaticDebug|x64'">
@@ -254,6 +255,7 @@
       <EnableUAC>false</EnableUAC>
       <AdditionalOptions>/DYNAMICBASE StateMachine.lib XMLParser.lib %(AdditionalOptions)</AdditionalOptions>
       <AdditionalLibraryDirectories>$(OutDir);$(SolutionDir)..\lib\$(PlatformTarget)\$(Configuration)\</AdditionalLibraryDirectories>
+      <StackReserveSize>0x10000000</StackReserveSize>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

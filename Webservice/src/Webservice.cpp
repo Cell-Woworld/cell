@@ -1,5 +1,5 @@
 #include "../proto/Webservice.pb.h"
-#include "internal/utils/nlohmann/json.hpp"
+#include "nlohmann/json.hpp"
 #include "Webservice.h"
 
 #define CPPHTTPLIB_OPENSSL_SUPPORT
@@ -42,12 +42,16 @@ namespace Webservice
 				String _host = ReadValue<String>(_name + ".host");
 				int _port = ReadValue<int>(_name + ".port");
 				Array<String> _service_list = ReadValue<Array<String>>(_name + ".serviceList");
-				std::cout << "****** Action name: " << _name << ", Port: " << _port << " ******" << "\n";
 				StartListen(_host, _port, _service_list);
 			}
 			catch (const std::exception& e) {
 				LOG_E(TAG, "Web Service error: %s", e.what());
 			}
+			break;
+		}
+		case "Webservice.PerformResponse"_hash:
+		{
+			wait_response_.notify_all();
 			break;
 		}
 		default:
@@ -61,30 +65,36 @@ namespace Webservice
 			std::thread([this, port, host, service_list] {
 				using namespace httplib;
 
-				//Server svr;
-				SSLServer svr((GetRootPath() + host + ".cert").c_str(), (GetRootPath() + host + ".key").c_str());
+				Obj<Server> _svr = nullptr;
+				if (!host.empty())
+				{
+					_svr = std::static_pointer_cast<Server>(std::make_shared<SSLServer>((GetRootPath() + host + ".cert").c_str(), (GetRootPath() + host + ".key").c_str()));
+				}
+				else
+				{
+					_svr = std::make_shared<Server>();
+				}
 
-				svr.Get("/hi", [](const Request& req, Response& res) {
-					res.set_content("Hello World!", "text/plain");
-					});
+				if (_svr == nullptr)
+					return;
 
 				for (auto service_info : service_list)
 				{
 					Start::ServiceInfo _service_info;
 					if (_service_info.ParseFromString(service_info) == true)
 					{
-						interested_column_map_[_service_info.servicename()] = { _service_info.response(), Set<String>(_service_info.interestedcolumnlist().begin(), _service_info.interestedcolumnlist().end()) };
+						interested_column_map_[_service_info.servicename()] = { _service_info.responsemodelname(), Set<String>(_service_info.interestedcolumnlist().begin(), _service_info.interestedcolumnlist().end()) };
 						std::replace(_service_info.mutable_servicename()->begin(), _service_info.mutable_servicename()->end(), '.', '/');
-						svr.Post(((String)"/" + _service_info.servicename()).c_str(), [&](const Request& req, Response& res,
+						_svr->Post(((String)"/" + _service_info.servicename()).c_str(), [&](const Request& req, Response& res,
 							const ContentReader& content_reader) {
 							this->Handler(req, res, content_reader);
 							});
 					}
 				}
 
-				//svr.Get("/stop", [&](const Request& req, Response& res) { svr.stop(); });
+				//_svr->Get("/stop", [&](const Request& req, Response& res) { _svr->stop(); });
 
-				svr.listen("0.0.0.0", port);
+				_svr->listen("0.0.0.0", port);
 			}).detach();
 			std::cout << "Webservice: Listening on port " << port << std::endl;
 		}
@@ -106,10 +116,10 @@ namespace Webservice
 		using namespace httplib;
 		using json = nlohmann::json;
 		String _message_name = req.path.substr(1);
-		std::replace(_message_name.begin(), _message_name.end(), '/', '.');
 		const Set<String>& _column_set = interested_column_map_[_message_name].column_set_;
-		String _response = interested_column_map_[_message_name].response_;
-		res.set_content(_response, "text/plain");
+		String _response_model_name = interested_column_map_[_message_name].response_;
+		std::replace(_message_name.begin(), _message_name.end(), '/', '.');
+		WriteValue(_response_model_name, "");
 
 		if (req.is_multipart_form_data())
 		{
@@ -142,7 +152,14 @@ namespace Webservice
 					}
 					return true;
 				});
+			LOG_I(TAG, "Webservice::Handler() multipart_form_data request: %s(%s)", _message_name.c_str(), _root.dump().c_str());
 			SendEvent(_message_name, _root.dump());
+			// wait for response
+			Mutex _response_mutex;
+			CondLocker _lk(_response_mutex);
+			wait_response_.wait(_lk, [this, _response_model_name] { return !ReadValue<String>(_response_model_name).empty(); });
+			String _response = ReadValue<String>(_response_model_name);
+			res.set_content(_response, "text/plain");
 		}
 		else 
 		{
@@ -160,7 +177,6 @@ namespace Webservice
 				}
 				if (!_root.is_null())
 				{
-					std::cout << _root.dump() << std::endl;
 					if (_column_set.size() > 0)
 					{
 						for (auto itr = _root.begin(); itr != _root.end();)
@@ -171,9 +187,18 @@ namespace Webservice
 								++itr;
 						}
 					}
-					String _message_name = req.path.substr(1);
-					std::replace(_message_name.begin(), _message_name.end(), '/', '.');
+					LOG_I(TAG, "Webservice::Handler() request: %s(%s)", _message_name.c_str(), _root.dump().c_str());
 					SendEvent(_message_name, _root.dump());
+					// wait for response
+					Mutex _response_mutex;
+					CondLocker _lk(_response_mutex);
+					wait_response_.wait(_lk, [this, _response_model_name] { return !ReadValue<String>(_response_model_name).empty(); });
+					String _response = ReadValue<String>(_response_model_name);
+					res.set_content(_response, "text/plain");
+				}
+				else
+				{
+					res.set_content("Error. Invalid parameters.", "text/plain");
 				}
 				return true;
 			});

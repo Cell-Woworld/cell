@@ -16,8 +16,8 @@
 #include <vector>
 #include "Transition.h"
 #include "type_def.h"
+#include "../inc/rapidxml.hpp"
 
-class ITCXMLNode;
 class IState;
 class CState;
 class IEvent;
@@ -32,6 +32,7 @@ namespace BioSys {
 
 class CStateMachineImpl
 {
+public:
     static const char* TAG_NAMES[];
 	static const char* ATTR_NAMES[];
 
@@ -47,7 +48,7 @@ public:
     virtual ~CStateMachineImpl();
 
 public:
-    bool Load(const char* szLogicMapFilename, BioSys::DNA* callback);
+    bool Load(const char* szLogicMap, BioSys::DNA* callback, bool isFile = true);
     int EventFired(const char* szEventID);
     void GetActiveStates(const char* lstActiveState[], const int iMaxListSize);
     void SetActiveStates(const char* lstActiveState[], const int iMaxListSize);
@@ -61,17 +62,18 @@ private:
     template< typename _Map >
     void DeletePtrInArrayAndClearMap(_Map &Map);
 
-    bool CreateMap(BioSys::DNA* callback, const ITCXMLNode& xNode, CState* pParentNode=nullptr);
+    bool CreateMap(BioSys::DNA* callback, const rapidxml::xml_node<>& xNode, CState* pParentNode=nullptr);
 
-    bool LinkTransitions(BioSys::DNA* callback, const ITCXMLNode& xNode);
+    bool LinkTransitions(BioSys::DNA* callback, const rapidxml::xml_node<>& xNode);
 
 	void _Split(std::vector<std::string>& vectOutput, const std::string& strSrc, const std::string& separator);
 
-	void getActionList(BioSys::DNA* callback, const ITCXMLNode& root_node, std::vector<CTransition::ActionPair>& action_pair_list);
-	void getInvokeList(BioSys::DNA* callback, const ITCXMLNode& root_node, int type, std::vector<CTransition::ActionPair>& action_pair_list);
-	bool CheckIfTransientState(const ITCXMLNode& root_node);
+    template<class T>
+    void getActionList(BioSys::DNA* callback, const rapidxml::xml_node<>& root_node, std::vector<T>& action_pair_list);
+	void getInvokeList(BioSys::DNA* callback, const rapidxml::xml_node<>& root_node, int type, std::vector<CTransition::ActionPair>& action_pair_list);
+	bool CheckIfTransientState(const rapidxml::xml_node<>& root_node);
 
-    bool CreateDataModel(const ITCXMLNode& xNode, DataModelMap& mapDataModel);
+    bool CreateDataModel(const rapidxml::xml_node<>& xNode, DataModelMap& mapDataModel);
     void ReplaceDataModel(std::string& expr);
 
     void SetPriorityEventList(const std::string& event_id, std::vector<IEvent*>& event_arry);
@@ -82,7 +84,7 @@ private:
     template<typename T>
     void Deserialize(const char* type, const DynaArray& data, T& value);
     template<typename T>
-    void Read(const String& name, T& value);
+    void Read(const std::string& name, T& value);
 
 private:
 	std::string m_strEntryStateID;

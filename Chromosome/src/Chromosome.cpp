@@ -3,11 +3,14 @@
 #include "internal/mRNA.h"
 #include "internal/DNA.h"
 #include "internal/utils/serializer.h"
+#include "internal/utils/cell_utils.h"
 #include "compile_time.h"
 #include <google/protobuf/compiler/importer.h>
 #include <ctime>
 #include "uuid.h"
 #include <filesystem>
+#include <typeinfo>
+#include <float.h>
 
 #define TAG "Chromosome"
 
@@ -58,30 +61,44 @@ extern "C" PUBLIC_API IBiomolecule * CreateInstance(IBiomolecule * owner)	//, co
 #else
 #endif
 
+enum type_id_table_
+{
+	type_bool,
+	type_int32_t,
+	type_uint32_t,
+	type_longlong_t,
+	type_ulonglong_t,
+	type_double,
+	type_string,
+
+	type_bool_array,
+	type_int32_t_array,
+	type_uint32_t_array,
+	type_longlong_t_array,
+	type_ulonglong_t_array,
+	type_double_array,
+	type_string_array,
+
+	type_json,
+
+	MAX_TYPE_COUNT,
+};
+
+bool Chromosome::discard_no_such_model_warning_ = false;
+
 Chromosome::Chromosome(IBiomolecule* owner)	//, const char* filename)
 	: IBiomolecule(owner)
 	, mRNA_({ nullptr, NULL })
 	, DNA_({ nullptr, NULL })
 {
 	assert(owner != nullptr);
-	//String _name, _root_path;
-	//SplitPathName(filename, _root_path, _name);
-	//root_path_ = _root_path;
-	//IBiomolecule::init(_name.c_str());
-
-
-	//if (filename != nullptr && filename[0] != '\0')
-	//{
-	//	Bio::Chromosome::Init _init;
-	//	_init.set_filename(filename);
-	//	owner->add_event(Bio::Chromosome::Init::descriptor()->full_name(), _init.SerializeAsString(), this);
-	//}
+	BuildTypeHastable();
 }
 
 Chromosome::~Chromosome()
 {
 	LOG_D(TAG, "doing Chromosome::~Chromosome(%p, %s)", this, full_name().data());
-	
+
 	for (auto& _child : children_)
 	{
 		if (_child.second.obj_ != nullptr)
@@ -96,7 +113,7 @@ Chromosome::~Chromosome()
 			FreeLibrary(handler_.instance_);
 	}
 
-	if (extra_desc_pool_.size() > 0)
+	//if (extra_desc_pool_.size() > 0)
 	{
 		unbind(this);
 	}
@@ -113,22 +130,22 @@ Chromosome::~Chromosome()
 	LOG_D(TAG, "Chromosome::~Chromosome(%s) done", full_name().data());
 }
 
-void Chromosome::init(const char* filename)
+bool Chromosome::init(const char* filename, const char* content)
 {
 	namespace fs = std::filesystem;
 	if (filename != nullptr && strcmp(filename, "*") == 0)
 	{
-		IBiomolecule::init(filename);
-		return;
+		return IBiomolecule::init(filename);
 	}
 
 	String _name, _root_path;
 	fs::path _filepath(filename);
 	SplitPathName(fs::absolute(_filepath).string(), _root_path, _name);
 	root_path_ = _root_path;
-	IBiomolecule::init(_name.c_str());
+	bool _retval = IBiomolecule::init(_name.c_str());
 
 	SaveVersion();
+	Read("Bio.Cell.Model.DiscardNoSuchModelWarning", discard_no_such_model_warning_);
 
 	{
 #ifdef STATIC_API
@@ -136,27 +153,37 @@ void Chromosome::init(const char* filename)
 #else
 		HINSTANCE _instance = NULL;
 		CREATE_RNA_INSTANCE_FUNCTION CreateInstanceF = NULL;
-		if ((_instance = LoadLibrary((String("./") + PREFIX + "mRNA" + DLL_EXTNAME).c_str())) != NULL)
+		if (_retval && (_instance = LoadLibrary((String("./") + PREFIX + "mRNA" + DLL_EXTNAME).c_str())) != NULL)
 		{
 			mRNA_.second = _instance;
 
 			CreateInstanceF = (CREATE_RNA_INSTANCE_FUNCTION)GetProcAddress(_instance, CREATE_INSTANCE);
 			if (CreateInstanceF)
 				mRNA_.first = Obj<mRNA>((mRNA*)CreateInstanceF(this));
+			else
+			{
+				LOG_W(TAG, "Chromosome::init(%s) fail to creating instance of mRNA", filename);
+				_retval = false;
+			}
+		}
+		else
+		{
+			LOG_W(TAG, "Chromosome::init(%s) fail to load mRNA", filename);
+			_retval = false;
 		}
 #endif
 		// for Bio.Cell.*
-		bind(this, google::protobuf::DescriptorPool::internal_generated_pool());
+		bind(this, nullptr);
 	}
 	{
 #ifdef STATIC_API
 		DNA_.first = Obj<DNA>((DNA*)DNA_CreateInstance(this));
-		if (DNA_.first != nullptr)
-			DNA_.first->init(filename);
+		if (_retval && DNA_.first != nullptr)
+			_retval = DNA_.first->init(filename);
 #else
 		HINSTANCE _instance = NULL;
 		CREATE_DNA_INSTANCE_FUNCTION CreateInstanceF = NULL;
-		if ((_instance = LoadLibrary((String("./") + PREFIX + "DNA" + DLL_EXTNAME).c_str())) != NULL)
+		if (_retval && (_instance = LoadLibrary((String("./") + PREFIX + "DNA" + DLL_EXTNAME).c_str())) != NULL)
 		{
 			DNA_.second = _instance;
 
@@ -164,7 +191,12 @@ void Chromosome::init(const char* filename)
 			if (CreateInstanceF)
 				DNA_.first = Obj<DNA>((DNA*)CreateInstanceF(this));
 			if (DNA_.first != nullptr)
-				DNA_.first->init(filename);
+			{
+				if (content == nullptr)
+					_retval = DNA_.first->init(filename);
+				else
+					_retval = DNA_.first->init(content, false);
+			}
 		}
 #endif
 	}
@@ -172,12 +204,13 @@ void Chromosome::init(const char* filename)
 	//{
 	//	add_event("", "", nullptr);
 	//}
+	return _retval;
 }
 
-void Chromosome::bind(IBiomolecule* src, void* desc_pool)
+void Chromosome::bind(IBiomolecule* src, const char* filename)
 {
-	mRNA_.first->bind(src, desc_pool);
-	owner()->bind(src, desc_pool);
+	mRNA_.first->bind(src, filename);
+	owner()->bind(src, filename);
 };
 
 void Chromosome::unbind(IBiomolecule* src)
@@ -249,7 +282,43 @@ void Chromosome::add_event(const DynaArray& msg_name, const DynaArray& payload, 
 
 void Chromosome::add_priority_event(const DynaArray& msg_name, const DynaArray& payload, IBiomolecule* src)
 {
-	owner()->add_priority_event(msg_name, payload, src == nullptr ? this : src);
+	IBiomolecule* _src = src;
+	if (_src == nullptr)
+		_src = this;
+	else
+	{
+		if (IdentifySource(_src) == false)
+		{
+			LOG_W(TAG, "Chromosome::add_priority_event(%s) unrecognized source!", msg_name.data());
+			//assert(false);
+			// return;		// source is invalid but don't ignore it. if ignore it, it will cause NextCall() of MySQL stop
+			_src = this;
+		}
+	}
+	if (payload != "")			// just forwarding to Cell
+		owner()->add_priority_event(msg_name, payload, _src);
+	else
+	{
+		DynaArray _payload = "";
+		IBiomolecule* _packer = this;
+		while (_packer->full_name() != "")
+		{
+			if (((Chromosome*)_packer)->mRNA_.first->pack(root_path_, msg_name, _payload) == true)
+			{
+				owner()->add_priority_event(msg_name, _payload, _src);
+				break;
+			}
+			else
+			{
+				_packer = _packer->owner();
+			}
+		}
+		if (_packer->full_name() == "")
+		{
+			LOG_D(TAG, "RAISE: pack(%s) not found", msg_name.data());
+			owner()->add_priority_event(msg_name, "", _src);
+		}
+	}
 }
 
 void Chromosome::on_event(const DynaArray& name_space, const DynaArray& msg_name, const DynaArray& payload)
@@ -292,6 +361,7 @@ void Chromosome::on_event(const DynaArray& name_space, const DynaArray& msg_name
 			{
 				do_event(msg_name);
 			}
+			break;
 		}
 		default:
 			if (msg_name != "" && mRNA_.first->unpack(msg_name, payload) == true)
@@ -310,11 +380,17 @@ void Chromosome::on_event(const DynaArray& name_space, const DynaArray& msg_name
 					//if (_destroying)
 					//	DNA_.first->on_event("", msg_name, payload);
 
+					unsigned long long _src = 0;
+					Read((String)"src_instance." + msg_name.str(), _src);
 					DNA_.first->on_event("", msg_name, payload);
 					for (auto& _child : children_)
 					{
-						if (_child.second.autoforward_ == true)
+						if (_child.second.autoforward_ == true || _child.second.obj_.get() == (Chromosome*)_src)
 							_child.second.obj_->on_event(_child.second.obj_->full_name(), msg_name, DynaArray(ByteArray(1, '\0')));
+						else
+						{
+							LOG_D(TAG, "message (%s) of (namespace:%s, source:%s) will not be handled in this namespace (%s)\n", msg_name.data(), name_space.data(), ((Chromosome*)_src)->full_name().data(), _child.second.obj_->full_name().data());
+						}
 					}
 					// don't clear parameters of a message, it may not be used in this process but the next few process
 					//if (payload != "")
@@ -335,9 +411,7 @@ void Chromosome::on_event(const DynaArray& name_space, const DynaArray& msg_name
 	}
 	else
 	{
-#ifdef _DEBUG
-		printf("message (%s) of namespace(%s) will not be handled in this namespace (%s)\n", msg_name.data(), name_space.data(), full_name().data());
-#endif
+		LOG_D(TAG, "message (%s) of namespace(%s) will not be handled in this namespace (%s)\n", msg_name.data(), name_space.data(), full_name().data());
 	}
 }
 
@@ -433,39 +507,62 @@ void Chromosome::do_event(const DynaArray& msg_name)
 		namespace fs = std::filesystem;
 		String _filename;
 		Read(msg_name.str() + ".src", _filename);
+		String _srcexpr, _expr;
+		Read(msg_name.str() + ".srcexpr", _srcexpr);
+		if (!_srcexpr.empty())
+			Read(_srcexpr, _expr);
 		String _id;
 		Read(msg_name.str() + ".id", _id);
 		String _auto_forward;
 		Read(msg_name.str() + ".autoforward", _auto_forward);
+		bool _ignore_error = false;
+		Read(msg_name.str() + ".ignore_error", _ignore_error);
+		bool _retval = false;
 		if (children_.count(_id) == 0)
 		{
-			if (fs::exists(root_path_.str() + _filename))
+			if (_filename != "" && _expr != "")
 			{
 				Obj<Chromosome> _obj(new Chromosome(this));
 				children_[_id] = { _obj, _filename, (_auto_forward == "true") ? true : false };
-				_obj->init((root_path_.str() + _filename).c_str());
+				_retval = _obj->init((root_path_.str() + _filename).c_str(), _expr.c_str());
 			}
-			else
+			else if (_filename != "")
 			{
-				Obj<Chromosome> _obj(new Chromosome(this));
-				children_[_id] = { _obj, _filename, (_auto_forward == "true") ? true : false };
-				_obj->init(_filename.c_str());
+				if (fs::exists(root_path_.str() + _filename))
+				{
+					Obj<Chromosome> _obj(new Chromosome(this));
+					children_[_id] = { _obj, _filename, (_auto_forward == "true") ? true : false };
+					_retval = _obj->init((root_path_.str() + _filename).c_str());
+				}
+				else if (_ignore_error == false || fs::exists(_filename))
+				{
+					Obj<Chromosome> _obj(new Chromosome(this));
+					children_[_id] = { _obj, _filename, (_auto_forward == "true") ? true : false };
+					_retval = _obj->init(_filename.c_str());
+				}
 			}
 		}
+		else
+		{
+			_retval = true;
+			LOG_W(TAG, "component [%s,%s] exists", _id.c_str(), _filename.c_str());
+		}
+		Write("return.invoke." + _id, _retval);
 		break;
 	}
 	case "Bio.Chromosome.Remove"_hash:
 	{
 		String _id;
 		Read(msg_name.str() + ".id", _id);
-		LOG_D(TAG, "doing Bio.Chromosome.Remove(%s)", _id.c_str());
 		if (children_.count(_id) > 0)
 		{
-			RemoveSourceFromMsgQueue(children_[_id].obj_.get());
+			LOG_D(TAG, "doing Bio.Chromosome.Remove(%s): %p", _id.c_str(), children_[_id].obj_.get());
+			IBiomolecule* _removed_molecule = children_[_id].obj_.get();
 			children_[_id].obj_->on_event(children_[_id].obj_->full_name(), "Bio.Cell.Destroyed", "");
 			children_[_id].autoforward_ = false;
 			//children_[_id].obj_.reset();
 			children_.erase(_id);			// try to recover this but may be not allowed
+			RemoveSourceFromMsgQueue(_removed_molecule);
 		}
 		LOG_D(TAG, "Bio.Chromosome.Remove(%s) done", _id.c_str());
 		break;
@@ -511,6 +608,11 @@ void Chromosome::do_event(const DynaArray& msg_name)
 		{
 			RevertSnapshot(_session_info);
 		}
+		break;
+	}
+	case "Bio.Cell.RemoveSourceFromMsgQueue"_hash:
+	{
+		owner()->do_event("Bio.Cell.RemoveSourceFromMsgQueue");
 		break;
 	}
 	case "Bio.Chromosome.RegisterActivity"_hash:
@@ -574,13 +676,105 @@ void Chromosome::do_event(const DynaArray& msg_name)
 		}
 		break;
 	}
+	case "Bio.Chromosome.StringFormat"_hash:
+	{
+		DNA_.first->do_event(Bio::Chromosome::StringFormat::descriptor()->full_name());
+		break;
+	}
+	case "Bio.Chromosome.Substring"_hash:
+	{
+		DNA_.first->do_event(Bio::Chromosome::Substring::descriptor()->full_name());
+		break;
+	}
+	case "Bio.Chromosome.ReplaceString"_hash:
+	{
+		DNA_.first->do_event(Bio::Chromosome::ReplaceString::descriptor()->full_name());
+		break;
+	}
+	case "Bio.Chromosome.SplitString"_hash:
+	{
+		DNA_.first->do_event(Bio::Chromosome::SplitString::descriptor()->full_name());
+		break;
+	}
+	case "Bio.Chromosome.GetActiveStates"_hash:
+	{
+		DNA_.first->do_event(Bio::Chromosome::GetActiveStates::descriptor()->full_name());
+		break;
+	}
+	case "Bio.Chromosome.SetActiveStates"_hash:
+	{
+		DNA_.first->do_event(Bio::Chromosome::SetActiveStates::descriptor()->full_name());
+		break;
+	}
+	case "Bio.Chromosome.GenerateRandom"_hash:
+	{
+		int _min, _max;
+		String _target_model;
+		Read(msg_name.str() + ".min_limit", _min);
+		Read(msg_name.str() + ".max_limit", _max);
+		Read(msg_name.str() + ".target_model_name", _target_model);
+		typedef std::chrono::high_resolution_clock hrclock;
+#if defined(_M_X64) || defined(__amd64__)
+		unsigned long long _seed = hrclock::now().time_since_epoch().count();
+		std::mt19937_64 _generator(_seed);
+#else
+		unsigned int _seed = (unsigned int)hrclock::now().time_since_epoch().count();
+		std::mt19937 _generator(_seed);
+#endif
+		std::uniform_int_distribution<int> _distribution(_min, _max);
+		int _generated_random = _distribution(_generator);
+		LOG_I(TAG, "Bio.Chromosome.GenerateRandom min=%d, max=%d, generated=%d", _min, _max, _generated_random);
+		if (_target_model != "")
+			Write(_target_model, std::to_string(_generated_random));
+		break;
+	}
+	case "Bio.Chromosome.Sort"_hash:
+	{
+		json _source;
+		String _source_model;
+		String _target_model;
+		Read(msg_name.str() + ".source", _source);
+		Read(msg_name.str() + ".source_model_name", _source_model);
+		Read(msg_name.str() + ".target_model_name", _target_model);
+		if (_source.empty())
+		{
+			if (!_source_model.empty())
+				Read(_source_model, _source);
+		}
+		if (!_source.empty())
+		{
+			try
+			{
+				std::sort(_source.begin(), _source.end());
+				if (!_target_model.empty())
+					Write(_target_model, _source);
+			}
+			catch (const json::exception)
+			{
+				String _source_str;
+				Read(msg_name.str() + ".source", _source_str);
+				Read(_source_model, _source_str);
+				Array<String> _string_array = split(_source_str, ",");
+				if (_string_array.empty() && !_source_model.empty())
+				{
+					Read(_source_model, _string_array);
+				}
+				std::sort(_string_array.begin(), _string_array.end());
+				if (!_target_model.empty())
+					Write(_target_model, _string_array);
+			}
+		}
+		break;
+	}
 	default:
+	{
 		for (auto _elem : handlers_)
 		{
 			if (_elem.obj_ != nullptr)
 				_elem.obj_->OnEvent(msg_name);
 		}
 		break;
+	}
 	}
 }
 
@@ -609,45 +803,173 @@ const char* Chromosome::GetType(const T& value)
 	return typeid(value).name();
 }
 
+template <typename T2>
+void Chromosome::Deserialize(bool, const DynaArray& data, T2& value)
+{
+	if (data.size() != 0 || !discard_no_such_model_warning_)
+	{
+		ByteArray _data(data.size());
+		memcpy(_data.data(), data.data(), data.size());
+		zpp::serializer::memory_input_archive in(_data);
+
+		int8_t _value;
+		in(_value);
+		TypeConversion(_value == 1, value);
+	}
+}
+
 template <typename T>
 void Chromosome::Deserialize(const char* type, const DynaArray& data, T& value)
 {
 	if (type == "")
 		throw std::exception();
 
-	const char* _target_type = GetType(value);
-
-	if (strcmp(type, _target_type) != 0)
+	if (data.size() != 0 || !discard_no_such_model_warning_)
 	{
-		assert(strcmp(type, _target_type) == 0);
-	}
+		size_t _type_hash = hash_((String)type);
+		if (type_hash_table_[_type_hash] == type_bool)
+			Deserialize(bool(), data, value);
+		else
+		{
+			if (_type_hash == hash_((String)GetType(value)))
+			{
+				ByteArray _data(data.size());
+				memcpy(_data.data(), data.data(), data.size());
+				zpp::serializer::memory_input_archive in(_data);
+				in(value);
+			}
+			else
+			{
+				typedef long long longlong;
+				typedef unsigned long long ulonglong;
+				switch (type_hash_table_[_type_hash])
+				{
+				case type_int32_t:
+					Deserialize(int32_t(), data, value);
+					break;
+				case type_uint32_t:
+					Deserialize(uint32_t(), data, value);
+					break;
+				case type_longlong_t:
+					Deserialize(longlong(), data, value);
+					break;
+				case type_ulonglong_t:
+					Deserialize(ulonglong(), data, value);
+					break;
+				case type_double:
+					Deserialize(double(), data, value);
+					break;
+				case type_string:
+					Deserialize(String(), data, value);
+					break;
 
-	ByteArray _data(data.size());
-	memcpy(_data.data(), data.data(), data.size());
-	zpp::serializer::memory_input_archive in(_data);
-	in(value);
+				case type_bool_array:
+					Deserialize(Array<bool>(), data, value);
+					break;
+				case type_int32_t_array:
+					Deserialize(Array<int32_t>(), data, value);
+					break;
+				case type_uint32_t_array:
+					Deserialize(Array<uint32_t>(), data, value);
+					break;
+				case type_longlong_t_array:
+					Deserialize(Array<longlong>(), data, value);
+					break;
+				case type_ulonglong_t_array:
+					Deserialize(Array<ulonglong>(), data, value);
+					break;
+				case type_double_array:
+					Deserialize(Array<double>(), data, value);
+					break;
+				case type_string_array:
+					Deserialize(Array<String>(), data, value);
+					break;
+				case type_json:
+					Deserialize(nlohmann::json(), data, value);
+					break;
+				default:
+					std::cout << "Unsupported type" << std::endl;
+					break;
+				}
+			}
+		}
+	}
 }
 
-template<typename T>
-void Chromosome::Read(const String& name, T& value)
+void Chromosome::Read(const String& name, bool& value, bool auto_conversion)
 {
 	DynaArray _stored_type;
 	DynaArray _buf;
-	model()->Read(name, _stored_type, _buf);
+	model()->Read(name, _stored_type, _buf, auto_conversion);
+#ifdef __linux__
+	if (_stored_type == "l")
+		_stored_type = "x";
+	else if (_stored_type == "m")
+		_stored_type = "y";
+#endif
 	try {
 		Deserialize(_stored_type.data(), _buf, value);
 	}
 	catch (...)
 	{
-		if (name.substr(0, strlen("Bio.Cell.")) == "Bio.Cell.")
+		if (!discard_no_such_model_warning_)
 		{
-			LOG_D(TAG, "No such key in Model, key name: %s", name.c_str());
-		}
-		else
-		{
-			LOG_W(TAG, "No such key in Model, key name: %s", name.c_str());
+			if (name.substr(0, strlen("Bio.Cell.")) == "Bio.Cell." || name.substr(0, strlen("Bio.Chromosome.")) == "Bio.Chromosome.")
+			{
+				LOG_D(TAG, "No such key in Model, key name: %s", name.c_str());
+			}
+			else
+			{
+				LOG_W(TAG, "No such key in Model, key name: %s", name.c_str());
+			}
 		}
 	}
+}
+
+void Chromosome::Read(const String& name, nlohmann::json& value, bool auto_conversion)
+{
+	DynaArray _stored_type;
+	model()->Read(name, _stored_type, value, auto_conversion);
+	if (!auto_conversion && _stored_type != GetType(value))
+	{
+		value = json();
+	}
+}
+
+template<typename T>
+void Chromosome::Read(const String& name, T& value, bool auto_conversion)
+{
+	DynaArray _stored_type;
+	DynaArray _buf;
+	model()->Read(name, _stored_type, _buf, auto_conversion);
+#ifdef __linux__
+	if (_stored_type == "l")
+		_stored_type = "x";
+	else if (_stored_type == "m")
+		_stored_type = "y";
+#endif
+	try {
+		Deserialize(_stored_type.data(), _buf, value);
+	}
+	catch (...)
+	{
+		if (!discard_no_such_model_warning_)
+		{
+			if (name.substr(0, strlen("Bio.Cell.")) == "Bio.Cell.")
+			{
+				LOG_D(TAG, "No such key in Model, key name: %s", name.c_str());
+			}
+			else
+			{
+				LOG_W(TAG, "No such key in Model, key name: %s", name.c_str());
+			}
+		}
+	}
+}
+
+void Chromosome::Write(const String& name, const nlohmann::json& value)
+{
+	model()->Write(name, GetType(value), value);
 }
 
 template<typename T>
@@ -656,7 +978,7 @@ void Chromosome::Write(const String& name, const T& value)
 	ByteArray data;
 	zpp::serializer::memory_output_archive out(data);
 	out(value);
-	model()->Write(name, GetType(value), data);
+	model()->Write(name, GetType(value), (DynaArray)data);
 }
 
 void Chromosome::Remove(const String& name)
@@ -671,8 +993,8 @@ void Chromosome::SaveVersion()
 	Write("Bio.Cell.version.minor.Chromosome", VERSION_MINOR);
 	Write("Bio.Cell.version.build.Chromosome", VERSION_BUILD);
 	Write("Bio.Cell.version.revision.Chromosome", (String)VERSION_REVISION);
-	const time_t TIME_DIFFERENCE = -8 * 60 * 60;
-	Write("Bio.Cell.version.time.Chromosome", (time_t)__TIME_UNIX__ + TIME_DIFFERENCE);
+	const long long TIME_DIFFERENCE = -8 * 60 * 60;
+	Write("Bio.Cell.version.time.Chromosome", (long long)__TIME_UNIX__ + TIME_DIFFERENCE);
 }
 
 const char* Chromosome::get_version()
@@ -733,7 +1055,7 @@ void Chromosome::RevertSnapshot(const Bio::Chromosome::SessionInfo& session_info
 	{
 		bool _found = false;
 		for (auto handler : handlers_)
-		{ 
+		{
 			if (elem == handler.name_)
 			{
 				_found = true;
@@ -751,10 +1073,10 @@ void Chromosome::RevertSnapshot(const Bio::Chromosome::SessionInfo& session_info
 	for (auto elem : session_info.children())
 	{
 		if (children_.count(elem.id()) == 0)
-		{ 
+		{
 			Write("Bio.Chromosome.New.id", elem.id());
 			Write("Bio.Chromosome.New.src", elem.gene());
-			Write("Bio.Chromosome.New.autoforward", elem.auto_forward()?(String)"true": (String)"false");
+			Write("Bio.Chromosome.New.autoforward", elem.auto_forward() ? (String)"true" : (String)"false");
 			LOG_D(TAG, "Chromosome::RevertSnapshot(%s, %s)", elem.id().c_str(), elem.gene().c_str());
 			do_event("Bio.Chromosome.New");
 		}
@@ -779,8 +1101,8 @@ void Chromosome::RestoreActivity(const Bio::Chromosome::SessionInfo& session_inf
 
 void Chromosome::AddProto(const String& filename)
 {
+	/*
 	using namespace google::protobuf;
-
 	String _path, _filename;
 	SplitPathName(filename, _path, _filename);
 
@@ -796,20 +1118,22 @@ void Chromosome::AddProto(const String& filename)
 		extra_desc_pool_.push_back(Obj<DescriptorPool>(new DescriptorPool()));
 		const FileDescriptor* _file_desc = extra_desc_pool_.back()->BuildFile(_fileDescriptorProto);
 		if (_file_desc != nullptr)
-			bind(this, extra_desc_pool_.back().get());
+			bind(nullptr, filename.c_str());
 		else
 		{
 			LOG_E(TAG, "Fail to parsing \"%s\" when AddProto", filename.c_str());
 			extra_desc_pool_.pop_back();
-		}
+}
 	}
 	else
 	{
 		LOG_E(TAG, "Fail to AddProto \"%s\"", filename.c_str());
 	}
+	*/
+	bind(nullptr, filename.c_str());
 }
 
-void Chromosome::RemoveSourceFromMsgQueue(const Chromosome* chromosome)
+void Chromosome::RemoveSourceFromMsgQueue(const IBiomolecule* chromosome)
 {
 	//IBiomolecule* _molecule = this;
 	//while (_molecule->full_name() != "")
@@ -819,25 +1143,333 @@ void Chromosome::RemoveSourceFromMsgQueue(const Chromosome* chromosome)
 	//Write("Bio.Cell.RemoveSourceFromMsgQueue.source_chromosome", (uint64_t)chromosome);
 	//_molecule->do_event("Bio.Cell.RemoveSourceFromMsgQueue");
 
-	DynaArray _payload = "";
-	IBiomolecule* _packer = this;
-	Write("Bio.Cell.RemoveSourceFromMsgQueue.source_chromosome", (uint64_t)chromosome);
-	while (_packer->full_name() != "")
+	//DynaArray _payload = "";
+	//IBiomolecule* _packer = this;
+	Write("Bio.Cell.RemoveSourceFromMsgQueue.source_chromosome", (unsigned long long)chromosome);
+	//while (_packer->full_name() != "")
+	//{
+	//	if (((Chromosome*)_packer)->mRNA_.first->pack(root_path_, "Bio.Cell.RemoveSourceFromMsgQueue", _payload) == true)
+	//	{
+	//		owner()->add_priority_event("Bio.Cell.RemoveSourceFromMsgQueue", _payload, this);
+	//		break;
+	//	}
+	//	else
+	//	{
+	//		_packer = _packer->owner();
+	//	}
+	//}
+	//if (_packer->full_name() == "")
+	//{
+	//	//LOG_D(TAG, "RAISE: pack(%s) not found", "Bio.Cell.RemoveSourceFromMsgQueue");
+	//	//owner()->add_priority_event("Bio.Cell.RemoveSourceFromMsgQueue", "", this);
+	//	owner()->do_event("Bio.Cell.RemoveSourceFromMsgQueue");
+	//}
+	owner()->do_event("Bio.Cell.RemoveSourceFromMsgQueue");
+}
+
+bool Chromosome::IdentifySource(const IBiomolecule* chromosome, IBiomolecule* namespace_owner)
+{
+	bool _ret = false;
+	IBiomolecule* _namespace_owner = namespace_owner;
+	if (namespace_owner == nullptr)
 	{
-		if (((Chromosome*)_packer)->mRNA_.first->pack(root_path_, "Bio.Cell.RemoveSourceFromMsgQueue", _payload) == true)
+		_namespace_owner = this;
+		if (_namespace_owner->owner() != nullptr && strcmp(typeid(*(_namespace_owner->owner())).name(), typeid(Chromosome).name()) == 0)
 		{
-			owner()->add_priority_event("Bio.Cell.RemoveSourceFromMsgQueue", _payload, this);
+			_namespace_owner = _namespace_owner->owner();
+		}
+	}
+	if (chromosome == _namespace_owner)
+		_ret = true;
+	else
+	{
+		for (auto& _child : ((Chromosome*)_namespace_owner)->children_)
+		{
+			if (_child.second.obj_.get() == chromosome)
+				return true;
+			if (_child.second.obj_->IdentifySource(chromosome, _child.second.obj_.get()) == true)
+				return true;
+		}
+	}
+	return _ret;
+}
+
+void* Chromosome::FindMessageTypeByName(const char* name)
+{
+	return (void*)google::protobuf::DescriptorPool::internal_generated_pool()->FindMessageTypeByName(name);
+}
+
+template <typename T1, typename T2>
+void Chromosome::Deserialize(T1, const DynaArray& data, T2& value)
+{
+	if (data.size() != 0 || !discard_no_such_model_warning_)
+	{
+		ByteArray _data(data.size());
+		memcpy(_data.data(), data.data(), data.size());
+		zpp::serializer::memory_input_archive in(_data);
+
+		T1 _value;
+		in(_value);
+		TypeConversion(_value, value);
+	}
+}
+
+template <typename T2>
+void Chromosome::Deserialize(Array<bool>, const DynaArray& data, T2& value)
+{
+	if (data.size() != 0 || !discard_no_such_model_warning_)
+	{
+		ByteArray _data(data.size());
+		memcpy(_data.data(), data.data(), data.size());
+		zpp::serializer::memory_input_archive in(_data);
+		Array<int8_t> _value_in_storage;
+		in(_value_in_storage);
+
+		Array<bool> _value;
+		std::transform(_value_in_storage.cbegin(), _value_in_storage.cend(), std::back_inserter(_value), [](const int8_t& elem)->bool {
+			return elem == 1;
+			});
+		TypeConversion(_value, value);
+	}
+}
+
+template <typename T2>
+void Chromosome::Deserialize(json, const DynaArray& data, T2& value)
+{
+	if (data.size() != 0 || !discard_no_such_model_warning_)
+	{
+		String _value = data.str();
+		TypeConversion(_value, value);
+	}
+}
+
+void Chromosome::Deserialize(const char* type, const DynaArray& data, bool& value)
+{
+	value = false;
+	size_t _type_hash = hash_(type);
+	if (type_hash_table_[_type_hash] == type_bool)
+	{
+		ByteArray _data(data.size());
+		memcpy(_data.data(), data.data(), data.size());
+		zpp::serializer::memory_input_archive in(_data);
+
+		int8_t _value;
+		in(_value);
+		value = (_value == 1);
+	}
+	else
+	{
+		typedef long long longlong;
+		typedef unsigned long long ulonglong;
+		switch (type_hash_table_[_type_hash])
+		{
+		case type_int32_t:
+			Deserialize(int32_t(), data, value);
+			break;
+		case type_uint32_t:
+			Deserialize(uint32_t(), data, value);
+			break;
+		case type_longlong_t:
+			Deserialize(longlong(), data, value);
+			break;
+		case type_ulonglong_t:
+			Deserialize(ulonglong(), data, value);
+			break;
+		case type_double:
+			Deserialize(double(), data, value);
+			break;
+		case type_string:
+			Deserialize(String(), data, value);
+			break;
+
+		case type_bool_array:
+			Deserialize(Array<bool>(), data, value);
+			break;
+		case type_int32_t_array:
+			Deserialize(Array<int32_t>(), data, value);
+			break;
+		case type_uint32_t_array:
+			Deserialize(Array<uint32_t>(), data, value);
+			break;
+		case type_longlong_t_array:
+			Deserialize(Array<longlong>(), data, value);
+			break;
+		case type_ulonglong_t_array:
+			Deserialize(Array<ulonglong>(), data, value);
+			break;
+		case type_double_array:
+			Deserialize(Array<double>(), data, value);
+			break;
+		case type_string_array:
+			Deserialize(Array<String>(), data, value);
+			break;
+		case type_json:
+			Deserialize(nlohmann::json(), data, value);
 			break;
 		}
-		else
-		{
-			_packer = _packer->owner();
-		}
 	}
-	if (_packer->full_name() == "")
-	{
-		LOG_D(TAG, "RAISE: pack(%s) not found", "Bio.Cell.RemoveSourceFromMsgQueue");
-		owner()->add_priority_event("Bio.Cell.RemoveSourceFromMsgQueue", "", this);
-	}
+}
 
+template<typename T1, typename T2>
+void Chromosome::TypeConversion(const T1& src, T2& dest) {
+	dest = (T2)src;
+}
+
+template<typename T>
+void Chromosome::TypeConversion(const T& src, String& dest) { dest = std::to_string(src); };
+void Chromosome::TypeConversion(const double& src, String& dest)
+{
+	dest = to_string_with_precision(src, DBL_DIG);
+};
+template<typename T>
+void Chromosome::TypeConversion(const String& src, T& dest) {
+	if (is_number(src))
+		dest = (T)stod(src);
+	else
+		dest = (T)0.0;
+};
+void Chromosome::TypeConversion(const bool& src, String& dest) { dest = (src == true ? "true" : "false"); };
+void Chromosome::TypeConversion(const String& src, String& dest) { dest = src; };
+template<typename T>
+void Chromosome::TypeConversion(const T& src, Array<String>& dest) { dest.push_back(std::to_string(src)); };
+void Chromosome::TypeConversion(const double& src, Array<String>& dest)
+{
+	dest.push_back(to_string_with_precision(src, DBL_DIG));
+};
+template<typename T1, typename T2>
+void Chromosome::TypeConversion(const T1& src, Array<T2>& dest) { dest.push_back((T2)src); };
+template<typename T>
+void Chromosome::TypeConversion(const String& src, Array<T>& dest) {
+	Array<String> _string_array;
+	if (src.size() > 2 && src[0] == '[' && src.back() == ']')
+	{
+		_string_array = split(src.substr(1, src.size() - 2), ",");
+	}
+	TypeConversion(_string_array, dest);
+};
+
+
+template<typename T1, typename T2>
+void Chromosome::TypeConversion(const Array<T1>& src, T2& dest) {
+	dest = (src.size() > 0 ? (T2)src.front() : dest);
+};
+
+template<typename T>
+void Chromosome::TypeConversion(const Array<T>& src, String& dest) {
+	dest = "[";
+	for (auto _elem : src)
+	{
+		dest += std::to_string(_elem) + ",";
+	}
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+
+template<typename T>
+void Chromosome::TypeConversion(const Array<String>& src, T& dest) {
+	if (src.size() > 1)
+		TypeConversion(src[0], dest);
+	else
+		dest = (T)0.0;
+};
+
+void Chromosome::TypeConversion(const Array<String>& src, String& dest) {
+	dest = "[";
+	for (auto _elem : src)
+	{
+		dest += _elem + ",";
+	}
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+
+void Chromosome::TypeConversion(const String& src, Array<String>& dest)
+{
+	if (src.size() > 2 && src[0] == '[' && src.back() == ']')
+	{
+		String _src = std::regex_replace(src, std::regex("\",\""), ",");
+		if (_src.size() > 3 && _src[1] == '\"')
+			_src.erase(1, 1);
+		if (_src.size() > 3 && _src[_src.size() - 2] == '\"')
+			_src.erase(_src.size() - 2, 1);
+		dest = split(_src.substr(1, _src.size() - 2), ",");
+	}
+};
+
+void Chromosome::TypeConversion(const Array<bool>& src, String& dest) {
+	dest = "[";
+	for (auto _elem : src)
+	{
+		dest += String(_elem == true ? "true" : "false") + ",";
+	}
+	if (dest.size() > 1)
+		dest.back() = ']';
+	else
+		dest.push_back(']');
+};
+
+// Array to Array
+template<typename T1, typename T2>
+void Chromosome::TypeConversion(const Array<T1>& src, Array<T2>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T1& elem)->T2 {
+		return (T2)elem;
+		});
+};
+
+template<typename T>
+void Chromosome::TypeConversion(const Array<T>& src, Array<String>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [](const T& elem)->String {
+		return std::to_string(elem);
+		});
+};
+
+template<typename T>
+void Chromosome::TypeConversion(const Array<String>& src, Array<T>& dest) {
+	std::transform(src.cbegin(), src.cend(), std::back_inserter(dest), [this](const String& elem)->T {
+		T _retval;
+		this->TypeConversion(elem, _retval);
+		return _retval;
+		});
+};
+
+void Chromosome::TypeConversion(const Array<String>& src, Array<String>& dest) {
+	dest = src;
+};
+
+void Chromosome::BuildTypeHastable()
+{
+	const char* _type_id_table_name[] = {
+		typeid(const bool).name(),
+		typeid(int32_t).name(),
+		typeid(uint32_t).name(),
+		typeid(long long).name(),
+		typeid(unsigned long long).name(),
+		typeid(double).name(),
+		typeid(String).name(),
+		typeid(Array<bool>).name(),
+		typeid(Array<int32_t>).name(),
+		typeid(Array<uint32_t>).name(),
+		typeid(Array<long long>).name(),
+		typeid(Array<unsigned long long>).name(),
+		typeid(Array<double>).name(),
+		typeid(Array<String>).name(),
+		typeid(json).name()
+	};
+	for (int i = 0; i < MAX_TYPE_COUNT; i++)
+	{
+		type_hash_table_[hash_(_type_id_table_name[i])] = i;
+	}
+}
+
+template <typename T>
+String Chromosome::to_string_with_precision(const T a_value, const int n)
+{
+	std::ostringstream out;
+	out.precision(n);
+	out << std::fixed << a_value;
+	return out.str();
 }

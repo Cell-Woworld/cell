@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" binding="early" xmlns:qt="http://www.qt.io/2015/02/scxml-ext" name="Timer" qt:editorversion="4.9.2">
+    <state id="Init">
+        <qt:editorinfo geometry="167.76;148.55;-60;-50;120;100" scenegeometry="167.76;148.55;107.76;98.55;120;100"/>
+        <onentry>
+            <script>Bio.Cell.NewRNA({&quot;name&quot;:&quot;TCPsocket&quot;})</script>
+        </onentry>
+        <transition type="external" target="Run" cond="::return.Bio.Cell.NewRNA"/>
+        <transition type="external" target="Final_1"/>
+    </state>
+    <state id="Run">
+        <qt:editorinfo geometry="601.69;149.02;-250.77;-111.51;347.07;507.85" scenegeometry="601.69;149.02;350.92;37.51;347.07;507.85"/>
+        <transition type="external" event="Bio.Cell.Destroyed" target="Final_1"/>
+        <state id="InitTCPsocket">
+            <qt:editorinfo geometry="3.65;11.10;-190;-50;237.26;116" scenegeometry="605.34;160.12;415.34;110.12;237.26;116"/>
+            <onentry>
+                <assign location="TCPsocket.Start.port" expr="8099"/>
+            </onentry>
+            <transition type="internal" event="TCPsocket.Start" target="WaitConnect"/>
+        </state>
+        <state id="WaitConnect">
+            <qt:editorinfo geometry="9.20;303.55;-217;-51.07;284.10;117.07" scenegeometry="610.89;452.57;393.89;401.50;284.10;117.07"/>
+            <onentry>
+                <script>TCPsocket.Start</script>
+            </onentry>
+            <transition type="internal" event="TCPsocket.NewConnection">
+                <assign location="TCPsocket.Service.Config.id" expr="::TCPsocket.NewConnection.id"/>
+                <raise event="TCPsocket.Service.Config"/>
+            </transition>
+            <transition type="internal" event="TCPsocket.Service.Config">
+                <assign location="Bio.Cell.ForwardEvent.name" expr="TCPsocket.Service.Config"/>
+                <assign expr="::encode.TCPsocket.Service.Config" location="Bio.Cell.ForwardEvent.payload"/>
+                <assign location="Bio.Cell.ForwardEvent.uuid" expr="::return.Bio.Cell.Division"/>
+                <raise event="Bio.Cell.ForwardEvent"/>
+            </transition>
+        </state>
+    </state>
+    <final id="Final_1">
+        <qt:editorinfo geometry="167.76;463.07;-20;-20;40;40" scenegeometry="167.76;463.07;147.76;443.07;40;40"/>
+    </final>
+</scxml>

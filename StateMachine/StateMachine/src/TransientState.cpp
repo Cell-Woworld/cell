@@ -6,7 +6,7 @@
 #include <assert.h>
 
 CTransientState::CTransientState(const char* szName, IState* pCallback)
-    : CState(szName, pCallback)
+    : CState(szName, STATE, pCallback)
 {
 }
 
